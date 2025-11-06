@@ -46,7 +46,7 @@
                 <Input
                 type="email"
                 placeholder="Enter your email"
-                className="h-12 rounded-lg border-gray-300 !px-3 placeholder:text-gray-400 focus:border-[#8B8BF9] focus:ring-[#8B8BF9]/30 transition-all"
+                className="h-12 rounded-lg border-gray-300 px-3! placeholder:text-gray-400 focus:border-[#8B8BF9] focus:ring-[#8B8BF9]/30 transition-all"
                 />
                 </div>
                 <div className="flex flex-col gap-4">
@@ -56,7 +56,7 @@
                 <Input
                 type="password"
                 placeholder="Enter your password"
-                className="h-12 rounded-lg border-gray-300 !px-3 placeholder:text-gray-400 focus:border-[#8B8BF9] focus:ring-[#8B8BF9]/30 transition-all"
+                className="h-12 rounded-lg border-gray-300 px-3! placeholder:text-gray-400 focus:border-[#8B8BF9] focus:ring-[#8B8BF9]/30 transition-all"
                 />
                 <div className="flex justify-end pt-1">
                     <Link
