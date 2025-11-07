@@ -3,7 +3,7 @@
     import { useState } from "react";
     import { useRouter } from "next/navigation";
     import { ChevronRight } from "lucide-react";
-    import Sidebar from "@/components/navbar";
+    import Sidebar from "@/components/sidebar";
 
     type UserData = {
     id: number;
