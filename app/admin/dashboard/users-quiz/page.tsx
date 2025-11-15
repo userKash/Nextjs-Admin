@@ -1,187 +1,315 @@
 "use client"
 
-import React, { useState } from 'react';
-import { Search, Filter, ChevronRight, X, AlertTriangle, RefreshCw, CheckCircle, Clock } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Search, ChevronRight, ChevronDown, X, AlertTriangle, RefreshCw, CheckCircle, Clock, Loader2, PlayCircle, Sparkles } from 'lucide-react';
+import { approveQuizSet, approveAllPendingQuizSets, regenerateQuizSet, triggerQuizGeneration } from '@/lib/quizActions';
+import { useUsers, useQuizGenerations, useUserQuizSets, useAllUserQuizCounts, type QuizSet } from '@/app/hooks/useFirebaseData';
+import { enhanceUserWithQuizCounts, enhanceUserWithQuizData, formatDate, organizeQuizSets, getQuizSetNumber, type EnhancedUser } from '@/lib/userHelpers';
 
-export default function UsersManagement() {
+type CEFRLevel = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
+
+interface LevelGroup {
+  level: CEFRLevel;
+  quizSets: (QuizSet & { setNumber: number })[];
+  pending: number;
+  approved: number;
+  total: number;
+}
+
+export default function UsersManagementPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
-  const [selectedUser, setSelectedUser] = useState(null);
-  const [selectedQuizSet, setSelectedQuizSet] = useState(null);
-  const [regenerateNotes, setRegenerateNotes] = useState('');
-  const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<EnhancedUser | null>(null);
+  const [expandedLevels, setExpandedLevels] = useState<Set<CEFRLevel>>(new Set());
+  const [selectedQuizSet, setSelectedQuizSet] = useState<(QuizSet & { setNumber: number }) | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [showAllApprovedNotification, setShowAllApprovedNotification] = useState(false);
 
-  const users = [
-    { 
-      id: 1, 
-      name: 'Maria Santos', 
-      email: 'maria@example.com', 
-      interests: ['Adventure Stories', 'Filipino Culture', 'Nature & Animals'], 
-      quizSets: 30,
-      approved: 30,
-      pending: 0,
-      lastActive: '2 hours ago', 
-      status: 'approved',
-      createdAt: '2024-10-15'
-    },
-    { 
-      id: 2, 
-      name: 'Juan Dela Cruz', 
-      email: 'juan@example.com', 
-      interests: ['Sports & Games', 'Friendship', 'Music & Arts'], 
-      quizSets: 30,
-      approved: 0,
-      pending: 30,
-      lastActive: '1 day ago', 
-      status: 'pending',
-      createdAt: '2024-11-04'
-    },
-    { 
-      id: 3, 
-      name: 'Sofia Reyes', 
-      email: 'sofia@example.com', 
-      interests: ['Fantasy & Magic', 'Family Values', 'Adventure Stories'], 
-      quizSets: 30,
-      approved: 15,
-      pending: 15,
-      lastActive: '3 days ago', 
-      status: 'partial',
-      createdAt: '2024-11-01'
-    },
-    { 
-      id: 4, 
-      name: 'Carlos Rivera', 
-      email: 'carlos@example.com', 
-      interests: ['Nature & Animals', 'Sports & Games', 'Filipino Culture'], 
-      quizSets: 30,
-      approved: 30,
-      pending: 0,
-      lastActive: '5 hours ago', 
-      status: 'approved',
-      createdAt: '2024-10-28'
-    },
-  ];
+  // Fetch data from Firebase
+  const { users, loading: usersLoading } = useUsers();
+  const { generations, loading: generationsLoading } = useQuizGenerations();
+  const { counts, loading: countsLoading } = useAllUserQuizCounts(); 
+  const { quizSets: selectedUserQuizSets, loading: quizSetsLoading } = useUserQuizSets(selectedUser?.id || null);
 
-  // Mock quiz sets data
-  const generateQuizSets = (userId) => {
-    const gameModes = ['Fill in the Blanks', 'Multiple Choice', 'Identification'];
-    const levels = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
-    const difficulties = ['Easy', 'Medium', 'Hard'];
-    
-    const sets = [];
-    let setNumber = 1;
-    
-    gameModes.forEach(mode => {
-      levels.forEach(level => {
-        difficulties.forEach(difficulty => {
-          const isApproved = userId === 1 || userId === 4 ? true : 
-                           userId === 3 ? setNumber <= 15 : false;
-          sets.push({
-            id: `${userId}-set-${setNumber}`,
-            setNumber,
-            gameMode: mode,
-            level,
-            difficulty,
-            questionsCount: 15,
-            status: isApproved ? 'approved' : 'pending',
-            approvedAt: isApproved ? '2024-11-03' : null,
-          });
-          setNumber++;
-        });
-      });
+  const enhancedUsers = useMemo(() => {
+    return users.map(user => {
+      const generation = generations[user.id];
+      const userCounts = counts[user.id]; 
+      return enhanceUserWithQuizCounts(user, generation, userCounts); 
     });
-    
-    return sets;
-  };
+  }, [users, generations, counts]);
 
-  // Mock questions for a quiz set
-  const generateQuestions = (setId) => {
-    const questions = [];
-    for (let i = 1; i <= 15; i++) {
-      questions.push({
-        id: `${setId}-q${i}`,
-        questionNumber: i,
-        type: 'multiple-choice',
-        question: `This is sample question ${i} for the quiz set. What is the correct answer to demonstrate the concept?`,
-        options: [
-          'Option A - This is the first possible answer',
-          'Option B - This is the second possible answer',
-          'Option C - This is the third possible answer',
-          'Option D - This is the fourth possible answer'
-        ],
-        correctAnswer: 'Option B - This is the second possible answer',
-        explanation: 'This is a detailed explanation of why Option B is correct and how it relates to the learning objectives.',
-        difficulty: 'Medium',
-        topic: 'Grammar - Present Tense'
+  const filteredUsers = useMemo(() => {
+    return enhancedUsers
+      .filter(user => {
+        const matchesSearch = user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            user.email.toLowerCase().includes(searchQuery.toLowerCase());
+        
+        if (!matchesSearch) return false;
+        if (filterStatus === 'all') return true;
+        
+        return user.status === filterStatus;
+      })
+      .sort((a, b) => {
+        // Sort by createdAt - newest first (descending)
+        if (!a.createdAt || !b.createdAt) return 0;
+        
+        const aTime = a.createdAt.toMillis ? a.createdAt.toMillis() : 
+                      (a.createdAt instanceof Date ? a.createdAt.getTime() : 0);
+        const bTime = b.createdAt.toMillis ? b.createdAt.toMillis() : 
+                      (b.createdAt instanceof Date ? b.createdAt.getTime() : 0);
+        
+        return bTime - aTime; // Descending order (newest first)
       });
-    }
-    return questions;
-  };
+  }, [enhancedUsers, searchQuery, filterStatus]);
 
-  const handleViewUser = (user) => {
+  // Organize quiz sets with numbers
+  const organizedQuizSets = useMemo(() => {
+    const organized = organizeQuizSets(selectedUserQuizSets);
+    return organized.map((quiz) => ({
+      ...quiz,
+      setNumber: getQuizSetNumber(quiz.gameMode, quiz.level, quiz.difficulty),
+    }));
+  }, [selectedUserQuizSets]);
+
+  // Group quizzes by level
+  const levelGroups = useMemo((): LevelGroup[] => {
+    const levels: CEFRLevel[] = ["A1", "A2", "B1", "B2", "C1", "C2"];
+    
+    return levels.map(level => {
+      const levelQuizzes = organizedQuizSets.filter(q => q.level === level);
+      const pending = levelQuizzes.filter(q => q.status === 'pending' || !q.status).length;
+      const approved = levelQuizzes.filter(q => q.status === 'approved').length;
+      
+      return {
+        level,
+        quizSets: levelQuizzes,
+        pending,
+        approved,
+        total: levelQuizzes.length
+      };
+    });
+  }, [organizedQuizSets]);
+
+  // Update selected user with actual quiz counts from loaded quiz sets
+  const updatedSelectedUser = useMemo(() => {
+    if (!selectedUser) return null;
+    
+    const generation = generations[selectedUser.id];
+    return enhanceUserWithQuizData(selectedUser, generation, selectedUserQuizSets);
+  }, [selectedUser, generations, selectedUserQuizSets]);
+
+  // Check if all quizzes are approved (30/30) and show notification
+  useEffect(() => {
+    if (updatedSelectedUser && updatedSelectedUser.approved === 30 && updatedSelectedUser.total === 30) {
+      setShowAllApprovedNotification(true);
+      const timer = setTimeout(() => setShowAllApprovedNotification(false), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [updatedSelectedUser]);
+
+  const handleViewUser = (user: EnhancedUser) => {
     setSelectedUser(user);
     setSelectedQuizSet(null);
+    setExpandedLevels(new Set());
+    setShowAllApprovedNotification(false);
   };
 
-  const handleViewQuizSet = (set) => {
+  const toggleLevel = (level: CEFRLevel) => {
+    setExpandedLevels(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(level)) {
+        newSet.delete(level);
+      } else {
+        newSet.add(level);
+      }
+      return newSet;
+    });
+  };
+
+  const handleViewQuizSet = (set: QuizSet & { setNumber: number }) => {
     setSelectedQuizSet(set);
-    setRegenerateNotes('');
-    setShowRegenerateConfirm(false);
   };
 
-  const handleApproveQuizSet = () => {
-    alert(`Quiz Set #${selectedQuizSet.setNumber} approved successfully!`);
-    setSelectedQuizSet(null);
-    // Update user data here
+  const handleApproveQuizSet = async () => {
+    if (!selectedQuizSet) return;
+    
+    setActionLoading(true);
+    const result = await approveQuizSet(selectedQuizSet.id);
+    setActionLoading(false);
+
+    if (result.success) {
+      alert(`Quiz Set #${selectedQuizSet.setNumber} approved successfully!`);
+      setSelectedQuizSet(null);
+    } else {
+      alert(`Error: ${result.error}`);
+    }
   };
 
-  const handleRegenerateQuizSet = () => {
-    if (!regenerateNotes.trim()) {
-      alert('Please provide regeneration notes to help improve the questions');
+  const handleRegenerateQuizSet = async () => {
+    if (!selectedQuizSet) return;
+    
+    if (!confirm(`Regenerate Quiz Set #${selectedQuizSet.setNumber}? This will create new questions and overwrite the current ones.`)) {
       return;
     }
-    alert(`Regenerating Quiz Set #${selectedQuizSet.setNumber} with notes: ${regenerateNotes}`);
-    setShowRegenerateConfirm(false);
-    setSelectedQuizSet(null);
-    // Trigger regeneration API here
-  };
 
-  const handleApproveAllPending = (userId) => {
-    const pendingCount = quizSets.filter(set => set.status === 'pending').length;
-    if (confirm(`Approve all ${pendingCount} pending quiz sets for this user?`)) {
-      alert('All pending quiz sets approved!');
-      setSelectedUser(null);
+    setActionLoading(true);
+    const result = await regenerateQuizSet(selectedQuizSet.id);
+    setActionLoading(false);
+
+    if (result.success) {
+      alert(`Quiz Set #${selectedQuizSet.setNumber} regenerated successfully with new questions!`);
+      setSelectedQuizSet(null);
+    } else {
+      alert(`Error: ${result.error}`);
     }
   };
 
-  const filteredUsers = users.filter(user => {
-    const matchesSearch = user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         user.email.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesFilter = filterStatus === 'all' || user.status === filterStatus;
-    return matchesSearch && matchesFilter;
-  });
+  const handleApproveAllPending = async (userId: string) => {
+    const pendingCount = organizedQuizSets.filter(set => set.status === 'pending' || !set.status).length;
+    
+    if (!confirm(`Approve all ${pendingCount} pending quiz sets for this user?`)) {
+      return;
+    }
 
-  const quizSets = selectedUser ? generateQuizSets(selectedUser.id) : [];
-  const questions = selectedQuizSet ? generateQuestions(selectedQuizSet.id) : [];
+    setActionLoading(true);
+    const result = await approveAllPendingQuizSets(userId);
+    setActionLoading(false);
+
+    if (result.success) {
+      alert(`All pending quiz sets approved! (${result.approved || pendingCount} quiz sets)`);
+    } else {
+      alert(`Error: ${result.error}`);
+    }
+  };
+
+  const handleApproveLevelQuizzes = async (userId: string, level: CEFRLevel) => {
+    const levelGroup = levelGroups.find(g => g.level === level);
+    if (!levelGroup || levelGroup.pending === 0) return;
+
+    if (!confirm(`Approve all ${levelGroup.pending} pending quiz sets for ${level}?`)) {
+      return;
+    }
+
+    setActionLoading(true);
+    
+    // Approve each pending quiz in the level
+    const pendingQuizzes = levelGroup.quizSets.filter(q => q.status === 'pending' || !q.status);
+    const results = await Promise.all(
+      pendingQuizzes.map(quiz => approveQuizSet(quiz.id))
+    );
+
+    setActionLoading(false);
+
+    const successCount = results.filter(r => r.success).length;
+    if (successCount === pendingQuizzes.length) {
+      alert(`All ${level} quiz sets approved successfully!`);
+    } else {
+      alert(`Approved ${successCount} of ${pendingQuizzes.length} quiz sets. Some failed.`);
+    }
+  };
+
+  const handleTriggerGeneration = async (userId: string) => {
+    if (!confirm('Trigger quiz generation for this user? This will create 30 quiz sets and may take 5-10 minutes.')) {
+      return;
+    }
+
+    setActionLoading(true);
+    const result = await triggerQuizGeneration(userId);
+    setActionLoading(false);
+
+    if (result.success) {
+      alert('Quiz generation triggered! The process will take 5-10 minutes. You can monitor the progress in the background.');
+    } else {
+      alert(`Error: ${result.error}`);
+    }
+  };
+
+  const getStatusBadge = (user: EnhancedUser) => {
+    if (user.status === 'no-generation' || user.generationStatus?.status === 'pending') {
+      return (
+        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium bg-orange-100 text-orange-700">
+          <Clock className="w-4 h-4" />
+          {user.status === 'no-generation' ? 'No Generation' : 'Generation Pending'}
+        </span>
+      );
+    }
+
+    if (user.status === 'approved') {
+      return (
+        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-700">
+          <CheckCircle className="w-4 h-4" />
+          All Approved
+        </span>
+      );
+    }
+
+    if (user.status === 'partial') {
+      return (
+        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-700">
+          <AlertTriangle className="w-4 h-4" />
+          Partially Approved
+        </span>
+      );
+    }
+
+    return (
+      <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium bg-orange-100 text-orange-700">
+        <Clock className="w-4 h-4" />
+        Pending Review
+      </span>
+    );
+  };
+
+  // Helper to show quiz progress in table
+  const getQuizProgressDisplay = (user: EnhancedUser) => {
+    if (user.generationStatus?.status === 'pending') {
+      return (
+        <div className="flex items-center gap-2">
+          <Loader2 className="w-4 h-4 text-orange-600 animate-spin" />
+          <span className="text-sm text-orange-600">
+            {user.generationStatus.progress || 0}/{user.generationStatus.total || 30}
+          </span>
+        </div>
+      );
+    }
+
+    if (user.generationStatus?.status === 'completed') {
+      // Show completion message if fully approved
+      if (user.status === 'approved') {
+        return (
+          <div className="flex items-center gap-2">
+            <CheckCircle className="w-4 h-4 text-green-600" />
+            <span className="text-sm text-green-600 font-medium">30/30 Complete ✓</span>
+          </div>
+        );
+      }
+      return <span className="text-sm text-gray-600 italic">View details to see progress</span>;
+    }
+
+    return <span className="text-sm text-gray-500 italic">Not started</span>;
+  };
+
+  if (usersLoading || generationsLoading || countsLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 text-[#5E67CC] animate-spin mx-auto mb-4" />
+          <p className="text-gray-600">Loading users...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center">
-              <Search className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">Users & Quiz Management</h1>
-              <p className="text-sm text-gray-500">Manage users and approve quiz sets</p>
-            </div>
-          </div>
+    <div className="w-full min-h-full">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">Users & Quiz Management</h1>
+          <p className="text-gray-600 mt-2">Manage users and approve quiz sets</p>
         </div>
-      </header>
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Search and Filter */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
           <div className="flex flex-col md:flex-row gap-4">
@@ -190,24 +318,24 @@ export default function UsersManagement() {
               <input
                 type="text"
                 placeholder="Search users by name or email..."
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#5E67CC]"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
             
-            <div className="flex gap-2">
-              {['all', 'pending', 'partial', 'approved'].map(status => (
+            <div className="flex gap-2 flex-wrap">
+              {['all', 'pending', 'partial', 'approved', 'no-generation'].map(status => (
                 <button
                   key={status}
                   onClick={() => setFilterStatus(status)}
                   className={`px-4 py-2 rounded-lg font-medium transition ${
                     filterStatus === status
-                      ? 'bg-indigo-600 text-white'
+                      ? 'bg-[#5E67CC] text-white'
                       : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
                 >
-                  {status.charAt(0).toUpperCase() + status.slice(1)}
+                  {status === 'no-generation' ? 'No Generation' : status.charAt(0).toUpperCase() + status.slice(1)}
                 </button>
               ))}
             </div>
@@ -222,7 +350,7 @@ export default function UsersManagement() {
                 <tr>
                   <th className="text-left py-4 px-6 font-semibold text-gray-700">User</th>
                   <th className="text-left py-4 px-6 font-semibold text-gray-700">Interests</th>
-                  <th className="text-left py-4 px-6 font-semibold text-gray-700">Quiz Sets</th>
+                  <th className="text-left py-4 px-6 font-semibold text-gray-700">Quiz Progress</th>
                   <th className="text-left py-4 px-6 font-semibold text-gray-700">Status</th>
                   <th className="text-left py-4 px-6 font-semibold text-gray-700">Created</th>
                   <th className="text-left py-4 px-6 font-semibold text-gray-700">Actions</th>
@@ -238,346 +366,497 @@ export default function UsersManagement() {
                       </div>
                     </td>
                     <td className="py-4 px-6">
-                      <div className="flex flex-wrap gap-1">
-                        {user.interests.slice(0, 2).map(interest => (
-                          <span key={interest} className="px-2 py-1 bg-indigo-100 text-indigo-700 text-xs rounded-full">
+                      <div className="flex flex-wrap gap-2">
+                        {user.interests.map(interest => (
+                          <span key={interest} className="px-3 py-1 bg-[#5E67CC]/10 text-[#5E67CC] text-xs font-medium rounded-full">
                             {interest}
                           </span>
                         ))}
-                        {user.interests.length > 2 && (
-                          <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">
-                            +{user.interests.length - 2}
-                          </span>
+                      </div>
+                    </td>
+                    <td className="py-4 px-6">
+                      {getQuizProgressDisplay(user)}
+                    </td>
+                    <td className="py-4 px-6">
+                      {getStatusBadge(user)}
+                    </td>
+                    <td className="py-4 px-6 text-gray-600">{formatDate(user.createdAt)}</td>
+                    <td className="py-4 px-6">
+                      <div className="flex gap-2">
+                        {user.status === 'no-generation' && user.generationStatus?.status !== 'pending' ? (
+                          <button 
+                            onClick={() => handleTriggerGeneration(user.id)}
+                            disabled={actionLoading}
+                            className="inline-flex items-center justify-center gap-2 min-w\[160px] px-4 py-2.5 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <PlayCircle className="w-4 h-4" />}
+                            Generate Quizzes
+                          </button>
+                        ) : (
+                          <button 
+                            onClick={() => handleViewUser(user)}
+                            className="inline-flex items-center justify-center gap-2 min-w\[160px] px-4 py-2.5 bg-[#5E67CC] text-white rounded-lg font-medium hover:bg-[#4A52A3] transition"
+                          >
+                            View Details
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
                         )}
                       </div>
-                    </td>
-                    <td className="py-4 px-6">
-                      <div className="flex items-center gap-3">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-sm font-semibold text-gray-900">
-                              {user.approved}/{user.quizSets}
-                            </span>
-                            <span className="text-xs text-gray-500">approved</span>
-                          </div>
-                          <div className="w-full bg-gray-200 rounded-full h-1.5">
-                            <div 
-                              className="bg-green-500 h-1.5 rounded-full transition-all"
-                              style={{ width: `${(user.approved / user.quizSets) * 100}%` }}
-                            ></div>
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-4 px-6">
-                      <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${
-                        user.status === 'approved' 
-                          ? 'bg-green-100 text-green-700' 
-                          : user.status === 'pending'
-                          ? 'bg-orange-100 text-orange-700'
-                          : 'bg-yellow-100 text-yellow-700'
-                      }`}>
-                        {user.status === 'approved' && <CheckCircle className="w-4 h-4" />}
-                        {user.status === 'pending' && <Clock className="w-4 h-4" />}
-                        {user.status === 'partial' && <AlertTriangle className="w-4 h-4" />}
-                        {user.status === 'approved' ? 'All Approved' : user.status === 'pending' ? 'Pending Review' : 'Partially Approved'}
-                      </span>
-                    </td>
-                    <td className="py-4 px-6 text-gray-600">{user.createdAt}</td>
-                    <td className="py-4 px-6">
-                      <button 
-                        onClick={() => handleViewUser(user)}
-                        className="inline-flex items-center gap-1 px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition"
-                      >
-                        View Details
-                        <ChevronRight className="w-4 h-4" />
-                      </button>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+
+          {filteredUsers.length === 0 && (
+            <div className="text-center py-12">
+              <p className="text-gray-500">No users found matching your criteria</p>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* User Detail Modal - Quiz Sets */}
-      {selectedUser && !selectedQuizSet && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white rounded-xl shadow-xl max-w-5xl w-full my-8">
-            {/* Header */}
-            <div className="p-6 border-b border-gray-200">
-              <div className="flex items-start justify-between">
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-900">{selectedUser.name}</h2>
-                  <p className="text-gray-600 mt-1">{selectedUser.email}</p>
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    {selectedUser.interests.map(interest => (
-                      <span key={interest} className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-sm font-medium">
-                        {interest}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                <button 
-                  onClick={() => setSelectedUser(null)}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition"
-                >
-                  <X className="w-6 h-6 text-gray-600" />
-                </button>
-              </div>
+      {/* User Detail Modal - Level-based View */}
+      {selectedUser && !selectedQuizSet && updatedSelectedUser && (
+        <UserDetailModal
+          user={updatedSelectedUser}
+          levelGroups={levelGroups}
+          expandedLevels={expandedLevels}
+          loading={quizSetsLoading}
+          onClose={() => setSelectedUser(null)}
+          onToggleLevel={toggleLevel}
+          onViewQuizSet={handleViewQuizSet}
+          onApproveLevelQuizzes={handleApproveLevelQuizzes}
+          onApproveAll={handleApproveAllPending}
+          actionLoading={actionLoading}
+          showAllApprovedNotification={showAllApprovedNotification}
+        />
+      )}
 
-              {/* Progress Summary */}
-              <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-semibold text-gray-700">Overall Progress</span>
-                  <span className="text-sm font-bold text-gray-900">
-                    {selectedUser.approved}/{selectedUser.quizSets} approved ({Math.round((selectedUser.approved / selectedUser.quizSets) * 100)}%)
+      {/* Quiz Set Detail Modal */}
+      {selectedQuizSet && (
+        <QuizSetDetailModal
+          quizSet={selectedQuizSet}
+          onClose={() => setSelectedQuizSet(null)}
+          onApprove={handleApproveQuizSet}
+          onRegenerate={handleRegenerateQuizSet}
+          actionLoading={actionLoading}
+        />
+      )}
+    </div>
+  );
+}
+
+// User Detail Modal Component with Level Groups
+function UserDetailModal({
+  user,
+  levelGroups,
+  expandedLevels,
+  loading,
+  onClose,
+  onToggleLevel,
+  onViewQuizSet,
+  onApproveLevelQuizzes,
+  onApproveAll,
+  actionLoading,
+  showAllApprovedNotification,
+}: {
+  user: EnhancedUser;
+  levelGroups: LevelGroup[];
+  expandedLevels: Set<CEFRLevel>;
+  loading: boolean;
+  onClose: () => void;
+  onToggleLevel: (level: CEFRLevel) => void;
+  onViewQuizSet: (set: QuizSet & { setNumber: number }) => void;
+  onApproveLevelQuizzes: (userId: string, level: CEFRLevel) => void;
+  onApproveAll: (userId: string) => void;
+  actionLoading: boolean;
+  showAllApprovedNotification: boolean;
+}) {
+  const totalQuizzes = levelGroups.reduce((sum, g) => sum + g.total, 0);
+  const totalApproved = levelGroups.reduce((sum, g) => sum + g.approved, 0);
+  const totalPending = levelGroups.reduce((sum, g) => sum + g.pending, 0);
+  const isFullyApproved = totalApproved === 30 && totalQuizzes === 30;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-6xl my-8 max-h-[95vh] flex flex-col">
+        {/* Header */}
+        <div className="p-6 border-b border-gray-200 flex-shrink:0">
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <h2 className="text-2xl font-bold text-gray-900">{user.name}</h2>
+              <p className="text-gray-600 mt-1">{user.email}</p>
+              <div className="flex flex-wrap gap-2 mt-4">
+                {user.interests.map(interest => (
+                  <span key={interest} className="px-4 py-2 bg-[#5E67CC]/10 text-[#5E67CC] rounded-lg text-sm font-medium">
+                    {interest}
                   </span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-3">
-                  <div 
-                    className="bg-green-500 h-3 rounded-full transition-all"
-                    style={{ width: `${(selectedUser.approved / selectedUser.quizSets) * 100}%` }}
-                  ></div>
-                </div>
-                
-                {selectedUser.pending > 0 && (
-                  <button
-                    onClick={() => handleApproveAllPending(selectedUser.id)}
-                    className="w-full mt-4 px-4 py-2 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition flex items-center justify-center gap-2"
-                  >
-                    <CheckCircle className="w-5 h-5" />
-                    Approve All {selectedUser.pending} Pending Quiz Sets
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Quiz Sets Grid */}
-            <div className="p-6 max-h-[60vh] overflow-y-auto">
-              <h3 className="text-lg font-bold text-gray-900 mb-4">Quiz Sets (30 total, 15 questions each)</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {quizSets.map(set => (
-                  <div 
-                    key={set.id}
-                    className={`p-4 border-2 rounded-xl cursor-pointer transition ${
-                      set.status === 'approved'
-                        ? 'border-green-200 bg-green-50 hover:border-green-300'
-                        : 'border-orange-200 bg-orange-50 hover:border-orange-300'
-                    }`}
-                    onClick={() => handleViewQuizSet(set)}
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-lg text-gray-900">#{set.setNumber}</span>
-                        {set.status === 'approved' ? (
-                          <CheckCircle className="w-5 h-5 text-green-600" />
-                        ) : (
-                          <Clock className="w-5 h-5 text-orange-600" />
-                        )}
-                      </div>
-                      <ChevronRight className="w-5 h-5 text-gray-400" />
-                    </div>
-                    
-                    <div className="space-y-1 mb-3">
-                      <div className="text-sm font-semibold text-gray-900">{set.gameMode}</div>
-                      <div className="text-sm text-gray-600">{set.level} - {set.difficulty}</div>
-                      <div className="text-xs text-gray-500">{set.questionsCount} questions</div>
-                    </div>
-                    
-                    {set.status === 'approved' && (
-                      <div className="text-xs text-green-700 font-medium">
-                        Approved on {set.approvedAt}
-                      </div>
-                    )}
-                  </div>
                 ))}
               </div>
             </div>
-
-            {/* Footer */}
-            <div className="p-6 border-t border-gray-200">
-              <button
-                onClick={() => setSelectedUser(null)}
-                className="w-full px-4 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition"
-              >
-                Close
-              </button>
-            </div>
+            <button 
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 rounded-lg transition flex-shrink:0"
+              aria-label="Close"
+            >
+              <X className="w-6 h-6 text-gray-600" />
+            </button>
           </div>
-        </div>
-      )}
 
-      {/* Quiz Set Detail Modal - All 15 Questions */}
-      {selectedQuizSet && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white rounded-xl shadow-xl max-w-5xl w-full my-8 max-h-[90vh] flex flex-col">
-            {/* Header */}
-            <div className="p-6 border-b border-gray-200 flex-shrink-0">
-              <div className="flex items-start justify-between">
+          {/* All Approved Notification */}
+          {showAllApprovedNotification && isFullyApproved && (
+            <div className="mt-6 p-4 bg-green-50 rounded-lg border-2 border-green-200 animate-pulse">
+              <div className="flex items-center gap-3">
+                <Sparkles className="w-6 h-6 text-green-600" />
                 <div>
-                  <div className="flex items-center gap-3 mb-2">
-                    <h2 className="text-2xl font-bold text-gray-900">Quiz Set #{selectedQuizSet.setNumber}</h2>
-                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                      selectedQuizSet.status === 'approved'
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-orange-100 text-orange-700'
-                    }`}>
-                      {selectedQuizSet.status === 'approved' ? 'Approved' : 'Pending Review'}
-                    </span>
-                  </div>
-                  <p className="text-gray-600">
-                    {selectedQuizSet.gameMode} • {selectedQuizSet.level} • {selectedQuizSet.difficulty} • {questions.length} Questions
+                  <p className="font-bold text-green-900 text-lg">🎉 All Quizzes Approved!</p>
+                  <p className="text-sm text-green-700 mt-1">
+                    Congratulations! All 30 quiz sets have been approved for this user.
                   </p>
                 </div>
-                <button 
-                  onClick={() => setSelectedQuizSet(null)}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition"
-                >
-                  <X className="w-6 h-6 text-gray-600" />
-                </button>
               </div>
             </div>
+          )}
 
-            {/* Questions Content - Scrollable */}
-            <div className="flex-1 overflow-y-auto p-6">
-              <div className="space-y-8">
-                {questions.map((question, idx) => (
-                  <div key={question.id} className="p-6 bg-gray-50 rounded-xl border border-gray-200">
-                    {/* Question Header */}
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <span className="flex-shrink-0 w-8 h-8 bg-indigo-600 text-white rounded-full flex items-center justify-center font-bold">
-                          {idx + 1}
-                        </span>
-                        <h3 className="text-lg font-semibold text-gray-900">Question {idx + 1}</h3>
-                      </div>
-                      <div className="flex gap-2">
-                        <span className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs font-medium">
-                          {question.difficulty}
-                        </span>
-                        <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
-                          {question.topic}
-                        </span>
+          {/* Generation Status */}
+          {user.generationStatus?.status === 'pending' && (
+            <div className="mt-6 p-4 bg-orange-50 rounded-lg border border-orange-200">
+              <div className="flex items-center gap-3">
+                <Loader2 className="w-5 h-5 text-orange-600 animate-spin" />
+                <div className="flex-1">
+                  <p className="font-semibold text-orange-900">Quiz Generation in Progress</p>
+                  <p className="text-sm text-orange-700 mt-1">
+                    Progress: {user.generationStatus.progress || 0}/{user.generationStatus.total || 30} quiz sets generated
+                  </p>
+                </div>
+              </div>
+              <div className="w-full bg-orange-200 rounded-full h-2.5 mt-3">
+                <div 
+                  className="bg-orange-600 h-2.5 rounded-full transition-all"
+                  style={{ width: `${((user.generationStatus.progress || 0) / (user.generationStatus.total || 30)) * 100}%` }}
+                ></div>
+              </div>
+            </div>
+          )}
+
+          {/* Progress Summary */}
+          {user.generationStatus?.status === 'completed' && totalQuizzes > 0 && (
+            <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-semibold text-gray-700">Overall Progress</span>
+                <span className="text-sm font-bold text-gray-900">
+                  {totalApproved}/{totalQuizzes} approved ({Math.round((totalApproved / totalQuizzes) * 100)}%)
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-3">
+                <div 
+                  className={`h-3 rounded-full transition-all ${isFullyApproved ? 'bg-green-500' : 'bg-[#5E67CC]'}`}
+                  style={{ width: `${(totalApproved / totalQuizzes) * 100}%` }}
+                ></div>
+              </div>
+              
+              {totalPending > 0 && !isFullyApproved && (
+                <button
+                  onClick={() => onApproveAll(user.id)}
+                  disabled={actionLoading}
+                  className="w-full mt-4 px-4 py-2.5 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {actionLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle className="w-5 h-5" />}
+                  Approve All {totalPending} Pending Quiz Sets
+                </button>
+              )}
+
+              {isFullyApproved && (
+                <div className="mt-4 p-3 bg-green-50 rounded-lg border border-green-200 text-center">
+                  <p className="text-green-800 font-semibold flex items-center justify-center gap-2">
+                    <CheckCircle className="w-5 h-5" />
+                    All quiz sets have been approved!
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Level Groups - Expandable */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {loading ? (
+            <div className="text-center py-12">
+              <Loader2 className="w-8 h-8 text-[#5E67CC] animate-spin mx-auto mb-4" />
+              <p className="text-gray-600">Loading quiz sets...</p>
+            </div>
+          ) : totalQuizzes > 0 ? (
+            <div className="space-y-4">
+              {levelGroups.map(group => (
+                <div key={group.level} className="border border-gray-200 rounded-xl overflow-hidden">
+                  {/* Level Header */}
+                  <button
+                    onClick={() => onToggleLevel(group.level)}
+                    className="w-full p-4 bg-gray-50 hover:bg-gray-100 transition flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-4">
+                      {expandedLevels.has(group.level) ? (
+                        <ChevronDown className="w-5 h-5 text-gray-600" />
+                      ) : (
+                        <ChevronRight className="w-5 h-5 text-gray-600" />
+                      )}
+                      <div className="text-left">
+                        <h3 className="text-lg font-bold text-gray-900">Level {group.level}</h3>
+                        <p className="text-sm text-gray-600">
+                          {group.approved}/{group.total} approved • {group.pending} pending
+                        </p>
                       </div>
                     </div>
-
-                    {/* Question Text */}
-                    <div className="mb-4">
-                      <p className="text-gray-900 font-medium">{question.question}</p>
-                    </div>
-
-                    {/* Answer Options */}
-                    <div className="space-y-2 mb-4">
-                      {question.options.map((option, optIdx) => (
-                        <div 
-                          key={optIdx}
-                          className={`p-3 rounded-lg border-2 ${
-                            option === question.correctAnswer
-                              ? 'border-green-500 bg-green-50'
-                              : 'border-gray-200 bg-white'
-                          }`}
+                    
+                    <div className="flex items-center gap-3">
+                      {group.pending > 0 && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onApproveLevelQuizzes(user.id, group.level);
+                          }}
+                          disabled={actionLoading}
+                          className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 transition disabled:opacity-50"
                         >
-                          <div className="flex items-center gap-3">
-                            <span className="font-semibold text-gray-700 flex-shrink-0">
-                              {String.fromCharCode(65 + optIdx)}.
-                            </span>
-                            <span className="text-gray-900">{option}</span>
-                            {option === question.correctAnswer && (
-                              <CheckCircle className="w-5 h-5 text-green-600 ml-auto flex-shrink-0" />
-                            )}
+                          Approve All {group.level}
+                        </button>
+                      )}
+                      <div className="w-32 bg-gray-200 rounded-full h-2.5">
+                        <div 
+                          className="bg-green-500 h-2.5 rounded-full transition-all"
+                          style={{ width: `${(group.approved / group.total) * 100}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Expanded Quiz Sets */}
+                  {expandedLevels.has(group.level) && (
+                    <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {group.quizSets.map(set => (
+                        <div 
+                          key={set.id}
+                          className={`p-4 border-2 rounded-lg cursor-pointer transition ${
+                            set.status === 'approved'
+                              ? 'border-green-200 bg-green-50 hover:border-green-300'
+                              : 'border-orange-200 bg-orange-50 hover:border-orange-300'
+                          }`}
+                          onClick={() => onViewQuizSet(set)}
+                        >
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-gray-900">#{set.setNumber}</span>
+                              {set.status === 'approved' ? (
+                                <CheckCircle className="w-4 h-4 text-green-600" />
+                              ) : (
+                                <Clock className="w-4 h-4 text-orange-600" />
+                              )}
+                            </div>
+                            <ChevronRight className="w-4 h-4 text-gray-400" />
                           </div>
+                          
+                          <div className="text-sm font-semibold text-gray-900 mb-1">{set.gameMode}</div>
+                          <div className="text-xs text-gray-600">{set.difficulty} • {set.questions?.length || 15} questions</div>
+                          
+                          {set.status === 'approved' && set.approvedAt && (
+                            <div className="text-xs text-green-700 font-medium mt-2">
+                              ✓ Approved
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <p className="text-gray-500">No quiz sets found for this user</p>
+            </div>
+          )}
+        </div>
 
-                    {/* Explanation */}
-                    <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                      <p className="text-sm font-semibold text-blue-900 mb-1">Explanation</p>
-                      <p className="text-gray-900 text-sm">{question.explanation}</p>
-                    </div>
-                  </div>
-                ))}
+        {/* Footer */}
+        <div className="p-6 border-t border-gray-200 flex-shrink:0">
+          <button
+            onClick={onClose}
+            className="w-full px-4 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Quiz Set Detail Modal Component
+function QuizSetDetailModal({
+  quizSet,
+  onClose,
+  onApprove,
+  onRegenerate,
+  actionLoading,
+}: {
+  quizSet: QuizSet & { setNumber: number };
+  onClose: () => void;
+  onApprove: () => void;
+  onRegenerate: () => void;
+  actionLoading: boolean;
+}) {
+  const questions = quizSet.questions || [];
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-6xl my-8 max-h-[95vh] flex flex-col">
+        {/* Header */}
+        <div className="p-6 border-b border-gray-200 flex-shrink:0">
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <h2 className="text-2xl font-bold text-gray-900">Quiz Set #{quizSet.setNumber}</h2>
+                <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                  quizSet.status === 'approved'
+                    ? 'bg-green-100 text-green-700'
+                    : 'bg-orange-100 text-orange-700'
+                }`}>
+                  {quizSet.status === 'approved' ? 'Approved' : 'Pending Review'}
+                </span>
               </div>
+              <p className="text-gray-600">
+                {quizSet.gameMode} • {quizSet.level} • {quizSet.difficulty} • {questions.length} Questions
+              </p>
             </div>
-
-            {/* Footer - Action Buttons */}
-            <div className="p-6 border-t border-gray-200 flex-shrink-0 bg-white">
-              {selectedQuizSet.status === 'pending' && !showRegenerateConfirm && (
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => setShowRegenerateConfirm(true)}
-                    className="flex-1 px-4 py-3 border-2 border-orange-300 text-orange-600 rounded-lg font-semibold hover:bg-orange-50 transition flex items-center justify-center gap-2"
-                  >
-                    <RefreshCw className="w-5 h-5" />
-                    Regenerate Quiz Set
-                  </button>
-                  <button
-                    onClick={handleApproveQuizSet}
-                    className="flex-1 px-4 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition flex items-center justify-center gap-2"
-                  >
-                    <CheckCircle className="w-5 h-5" />
-                    Approve Quiz Set
-                  </button>
-                </div>
-              )}
-
-              {selectedQuizSet.status === 'pending' && showRegenerateConfirm && (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Regeneration Instructions <span className="text-red-600">*</span>
-                    </label>
-                    <textarea
-                      value={regenerateNotes}
-                      onChange={(e) => setRegenerateNotes(e.target.value)}
-                      placeholder="Provide specific feedback on what should be improved (e.g., 'Make questions more challenging', 'Focus more on vocabulary', 'Add more cultural context')..."
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                      rows={4}
-                    ></textarea>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Your feedback will help generate better questions tailored to the user's needs.
-                    </p>
-                  </div>
-                  
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => setShowRegenerateConfirm(false)}
-                      className="flex-1 px-4 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={handleRegenerateQuizSet}
-                      className="flex-1 px-4 py-3 bg-orange-600 text-white rounded-lg font-semibold hover:bg-orange-700 transition flex items-center justify-center gap-2"
-                    >
-                      <RefreshCw className="w-5 h-5" />
-                      Confirm Regeneration
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {selectedQuizSet.status === 'approved' && (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-green-700 bg-green-50 p-4 rounded-lg border border-green-200">
-                    <CheckCircle className="w-5 h-5 flex-shrink-0" />
-                    <span className="font-medium">This quiz set has been approved on {selectedQuizSet.approvedAt}</span>
-                  </div>
-                  <button
-                    onClick={() => setShowRegenerateConfirm(true)}
-                    className="w-full px-4 py-3 border-2 border-orange-300 text-orange-600 rounded-lg font-semibold hover:bg-orange-50 transition flex items-center justify-center gap-2"
-                  >
-                    <RefreshCw className="w-5 h-5" />
-                    Regenerate Quiz Set Anyway
-                  </button>
-                </div>
-              )}
-            </div>
+            <button 
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 rounded-lg transition"
+              aria-label="Close"
+            >
+              <X className="w-6 h-6 text-gray-600" />
+            </button>
           </div>
         </div>
-      )}
+
+        {/* Questions Content - Scrollable */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {questions.length > 0 ? (
+            <div className="space-y-6">
+              {questions.map((question: any, idx: number) => (
+                <div key={idx} className="p-6 bg-gray-50 rounded-xl border border-gray-200">
+                  {/* Question Header */}
+                  <div className="flex items-center gap-3 mb-4">
+                    <span className="flex-shrink:0 w-8 h-8 bg-[#5E67CC] text-white rounded-full flex items-center justify-center font-bold text-sm">
+                      {idx + 1}
+                    </span>
+                    <h3 className="text-lg font-semibold text-gray-900">Question {idx + 1}</h3>
+                  </div>
+
+                  {/* Passage (if exists) */}
+                  {question.passage && (
+                    <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                      <p className="text-sm font-semibold text-blue-900 mb-2">Reading Passage:</p>
+                      <p className="text-gray-900 text-sm italic leading-relaxed">{question.passage}</p>
+                    </div>
+                  )}
+
+                  {/* Question Text */}
+                  <div className="mb-4">
+                    <p className="text-gray-900 font-medium text-base">{question.question}</p>
+                  </div>
+
+                  {/* Answer Options */}
+                  {question.options && question.options.length > 0 && (
+                    <div className="space-y-2 mb-4">
+                      {question.options.map((option: string, optIdx: number) => {
+                        const isCorrect = optIdx === question.correctIndex || option === question.correctAnswer;
+                        return (
+                          <div 
+                            key={optIdx}
+                            className={`p-3 rounded-lg border-2 transition ${
+                              isCorrect
+                                ? 'border-green-500 bg-green-50'
+                                : 'border-gray-200 bg-white hover:border-gray-300'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <span className="font-semibold text-gray-700 flex-shrink:0 text-sm">
+                                {String.fromCharCode(65 + optIdx)}.
+                              </span>
+                              <span className="text-gray-900 text-sm flex-1">{option}</span>
+                              {isCorrect && (
+                                <CheckCircle className="w-5 h-5 text-green-600 flex-shrink:0" />
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Explanation */}
+                  {question.explanation && (
+                    <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                      <p className="text-sm font-semibold text-blue-900 mb-1">Explanation</p>
+                      <p className="text-gray-900 text-sm leading-relaxed">{question.explanation}</p>
+                      <p className="text-gray-900 text-sm leading-relaxed">{question.clue}</p>
+                    </div>
+                  )}
+
+                  {/* Clue */}
+                  {question.clue && (
+                    <div className="mt-3 p-4 bg-amber-50 rounded-lg border border-amber-200">
+                      <p className="text-sm font-semibold text-amber-900 mb-1">💡 Hint</p>
+                      <p className="text-gray-900 text-sm leading-relaxed">{question.clue}</p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <p className="text-gray-500">No questions available for this quiz set</p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer - Action Buttons */}
+        <div className="p-6 border-t border-gray-200 flex-shrink:0 bg-white">
+          <div className="flex gap-3">
+            {/* Only show Regenerate button if quiz is NOT approved */}
+            {quizSet.status !== 'approved' && (
+              <button
+                onClick={onRegenerate}
+                disabled={actionLoading}
+                className="flex-1 px-4 py-3 border-2 border-orange-300 text-orange-600 rounded-lg font-semibold hover:bg-orange-50 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {actionLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
+                Regenerate Quiz
+              </button>
+            )}
+            
+            {quizSet.status !== 'approved' && (
+              <button
+                onClick={onApprove}
+                disabled={actionLoading}
+                className="flex-1 px-4 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {actionLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle className="w-5 h-5" />}
+                Approve Quiz
+              </button>
+            )}
+            
+            {quizSet.status === 'approved' && (
+              <div className="flex-1 flex items-center gap-2 text-green-700 bg-green-50 p-3 rounded-lg border border-green-200 justify-center">
+                <CheckCircle className="w-5 h-5 flex-shrink:0" />
+                <span className="font-medium text-sm">Approved on {formatDate(quizSet.approvedAt)}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
