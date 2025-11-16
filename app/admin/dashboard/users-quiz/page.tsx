@@ -210,7 +210,7 @@ export default function UsersManagementPage() {
   };
 
   const handleTriggerGeneration = async (userId: string) => {
-    if (!confirm('Trigger quiz generation for this user? This will create 30 quiz sets and may take 5-10 minutes.')) {
+    if (!confirm('Trigger quiz generation for this user? This will create 30 quiz sets and may take 1-2 minutes.')) {
       return;
     }
 
@@ -219,7 +219,7 @@ export default function UsersManagementPage() {
     setActionLoading(false);
 
     if (result.success) {
-      alert('Quiz generation triggered! The process will take 5-10 minutes. You can monitor the progress in the background.');
+      alert('Quiz generation triggered! The process will take 1-2 minutes. You can monitor the progress in the background.');
     } else {
       alert(`Error: ${result.error}`);
     }
