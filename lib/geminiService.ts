@@ -9,7 +9,7 @@ export interface Question {
   options: string[];
   correctIndex: number;
   explanation: string;
-  clue: string; // ✨ NEW: Hint to guide learners
+  clue: string;
 }
 
 export type CEFRLevel = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
@@ -103,7 +103,7 @@ function validateAndFormatQuestions(raw: string): Question[] {
       q.options.length !== 4 ||
       typeof q.correctIndex !== "number" ||
       typeof q.explanation !== "string" ||
-      typeof q.clue !== "string" // ✨ Validate clue field
+      typeof q.clue !== "string"
     ) {
       console.error(`Invalid format at question #${idx + 1}:`, q);
       throw new Error("Invalid question format from Gemini API");
@@ -114,12 +114,11 @@ function validateAndFormatQuestions(raw: string): Question[] {
       question: capitalizeFirstLetter(normalizedQuestion),
       options: q.options.map((opt: string) => capitalizeFirstLetter(opt)),
       explanation: capitalizeFirstLetter(q.explanation),
-      clue: capitalizeFirstLetter(q.clue), // ✨ Format clue
+      clue: capitalizeFirstLetter(q.clue),
     };
   });
 }
 
-// Helper functions
 function getLevelDescription(level: CEFRLevel): string {
   switch (level) {
     case "A1": return "Beginner (Elementary English learners)";
@@ -143,252 +142,193 @@ function getLevelGuidelines(level: CEFRLevel): string {
 }
 
 function vocabularyPrompt(level: CEFRLevel, interests: string[], gameMode: string, difficulty: string): string {
-  return `
-    You are a quiz creator for EngliQuest, a mobile English learning app.
+  return `You are a quiz creator for EngliQuest. Generate EXACTLY 15 vocabulary questions.
 
-    Generate a quiz set of 15 UNIQUE and DIVERSE multiple-choice questions in JSON format.
+CRITICAL JSON REQUIREMENTS:
+- Return ONLY a valid JSON array
+- NO markdown, NO code blocks, NO extra text
+- Start with [ and end with ]
+- EXACTLY 15 questions
+- Each question MUST have: question, options (array of 4 strings), correctIndex (0-3), clue, explanation
 
-    Details:
-    - Target Level: ${level} (${getLevelDescription(level)})
-    - Game Mode: ${gameMode}
-    - Difficulty: ${difficulty}
-    - Interests: ${interests.join(", ")}
+Target: ${level} (${getLevelGuidelines(level)}) | Difficulty: ${difficulty}
+Interests: ${interests.join(", ")}
 
-    IMPORTANT: Create completely NEW and DIFFERENT questions each time. Use creative scenarios, varied vocabulary words, and diverse contexts. Avoid repetition.
+Vocabulary Focus:
+- Vocabulary refers to a learner's understanding and correct use of words
+- Questions must test vocabulary in context, where learners choose the correct word to complete a sentence
+- Use context clues (e.g., contrast, definition, or example clues) to guide learners
+- All sentences and words should be appropriate for ${level} level learners
+- Each question connects to user interests with varied scenarios
 
-    Vocabulary Focus:
-    - Vocabulary refers to a learner's understanding and correct use of words.
-    - Questions must test vocabulary in context, where learners choose the correct word to complete a sentence.
-    - Use context clues (e.g., contrast, definition, or example clues) to guide learners.
-    - All sentences and words should be appropriate for ${level} level learners: ${getLevelGuidelines(level)}.
+Example format (follow EXACTLY):
+[
+  {
+    "question": "She was tired, ___ she went to bed early.",
+    "options": ["but", "so", "because", "and"],
+    "correctIndex": 1,
+    "clue": "Look for a word that shows result or consequence.",
+    "explanation": "The word 'so' shows the result of being tired."
+  }
+]
 
-    Rules:
-    1. Each question must be directly connected to the user's interests listed above, using DIFFERENT aspects and scenarios.
-    2. Each question must present a short sentence with one missing word, requiring the learner to select the correct word.
-    3. Provide exactly 4 answer options per question.
-    4. For each question, set "correctIndex" to the 0-based index of the correct option.
-    5. Include a "clue" field with a helpful hint that guides learners without giving away the answer directly. The clue should point to context, meaning, or word relationships.
-    6. Include an "explanation" field showing why the correct option fits the context.
-    7. VARIETY IS KEY: Use different sentence structures, different vocabulary words, and different contexts for each question.
-    8. Return only valid JSON, no extra text or formatting.
-
-    Example JSON:
-    [
-        {
-            "question": "She was tired, ___ she went to bed early.",
-            "options": ["but", "so", "because", "and"],
-            "correctIndex": 1,
-            "clue": "Look for a word that shows a result or consequence.",
-            "explanation": "The word 'so' shows the result of being tired."
-        }
-    ]
-  `;
+IMPORTANT: Start your response with [ and end with ]. No text before or after.
+Generate 15 questions now:`;
 }
 
 function grammarPrompt(level: CEFRLevel, interests: string[], gameMode: string, difficulty: string): string {
-  return `
-    You are a grammar quiz creator for EngliQuest, a mobile English learning app.
+  return `You are a grammar quiz creator for EngliQuest. Generate EXACTLY 15 grammar questions.
 
-    Generate a quiz set of 15 UNIQUE and DIVERSE multiple-choice questions in JSON format.
+CRITICAL JSON REQUIREMENTS:
+- Return ONLY a valid JSON array
+- NO markdown, NO code blocks, NO extra text
+- Start with [ and end with ]
+- EXACTLY 15 questions
+- Each question MUST have: question, options (array of 4 strings), correctIndex (0-3), clue, explanation
 
-    Details:
-    - Target Level: ${level} (${getLevelDescription(level)})
-    - Focus: Grammar
-    - Difficulty: ${difficulty}
-    - Interests: ${interests.join(", ")}
+Target: ${level} (${getLevelGuidelines(level)}) | Difficulty: ${difficulty}
+Interests: ${interests.join(", ")}
 
-    IMPORTANT: Create completely NEW and DIFFERENT grammar questions each time. Use varied grammar topics, diverse sentence structures, and creative contexts. Avoid repetition.
+Grammar Focus:
+- Grammar is the way words are put together to make correct sentences
+- Activities: Fill-in-the-blank and Error Spotting
+- Target common grammar issues like subject-verb agreement, tense usage, and misuse/omission of verbs
+- Learners should practice identifying and correcting errors
+- Each question must tie back to the learner's interests when possible, using different scenarios
 
-    Grammar Focus:
-    - Grammar is the way words are put together to make correct sentences.
-    - Activities: Fill-in-the-blank and Error Spotting.
-    - Target common grammar issues like subject-verb agreement, tense usage, and misuse/omission of verbs.
-    - Learners should practice identifying and correcting errors.
+Example format (follow EXACTLY):
+[
+  {
+    "question": "He ___ to the market yesterday.",
+    "options": ["go", "goes", "went", "gone"],
+    "correctIndex": 2,
+    "clue": "Think about the past tense form of the verb.",
+    "explanation": "The past tense of 'go' is 'went'."
+  }
+]
 
-    Rules:
-    1. Each question must be either:
-        - A sentence with a blank (fill-in-the-blank), or
-        - A sentence with a grammar error (error spotting).
-    2. Provide exactly 4 answer options per question.
-    3. For each question, set "correctIndex" to the 0-based index of the correct option.
-    4. Include a "clue" field with a helpful hint about the grammar rule being tested (e.g., "Think about past tense" or "Check subject-verb agreement").
-    5. Include an "explanation" field showing why the correct answer is correct and, if applicable, what the error was.
-    6. Each question must tie back to the learner's interests when possible, using DIFFERENT scenarios.
-    7. VARIETY IS KEY: Cover different grammar rules, different tenses, and different error types.
-    8. Return only valid JSON, no extra text or formatting.
-
-    Example JSON:
-    [
-        {
-            "question": "He ___ to the market yesterday.",
-            "options": ["go", "goes", "went", "gone"],
-            "correctIndex": 2,
-            "clue": "Think about the past tense form of the verb.",
-            "explanation": "The past tense of 'go' is 'went'."
-        },
-        {
-            "question": "She don't like apples.",
-            "options": ["Correct as is", "She doesn't likes apples", "She doesn't like apples", "She not like apples"],
-            "correctIndex": 2,
-            "clue": "Check if the verb matches the subject 'she'.",
-            "explanation": "The correct form is 'She doesn't like apples'."
-        }
-    ]
-  `;
+IMPORTANT: Start your response with [ and end with ]. No text before or after.
+Generate 15 questions now:`;
 }
 
 function translationPrompt(level: CEFRLevel, interests: string[], gameMode: string, difficulty: string): string {
-  return `
-    You are a translation quiz creator for EngliQuest, a mobile English learning app.
+  return `You are a translation quiz creator for EngliQuest. Generate EXACTLY 15 Filipino to English translation questions.
 
-    Generate a quiz set of 15 UNIQUE and DIVERSE multiple-choice questions in JSON format.
+CRITICAL JSON REQUIREMENTS:
+- Return ONLY a valid JSON array
+- NO markdown, NO code blocks, NO extra text
+- Start with [ and end with ]
+- EXACTLY 15 questions
+- Each question MUST have: question, options (array of 4 strings), correctIndex (0-3), clue, explanation
 
-    Details:
-    - Target Level: ${level} (${getLevelDescription(level)})
-    - Focus: Translation (Filipino → English)
-    - Difficulty: ${difficulty}
-    - Interests: ${interests.join(", ")}
+Target: ${level} (${getLevelGuidelines(level)}) | Difficulty: ${difficulty}
+Interests: ${interests.join(", ")}
 
-    IMPORTANT: Create completely NEW and DIFFERENT translation questions each time. Use varied Filipino words and phrases. Avoid repetition.
+Translation Focus:
+- Learners must translate Filipino words or short phrases into English
+- Activities: Word or short-phrase translation (input-based recall)
+- Encourage bilingual development by reinforcing both Filipino and English
+- Questions should connect to the learner's interests when possible
+- Keep translations age-appropriate and aligned with everyday vocabulary
 
-    Translation Focus:
-    - Learners must translate **Filipino words or short phrases into English**.
-    - Activities: Word or short-phrase translation (input-based recall).
-    - Encourage bilingual development by reinforcing both Filipino and English.
-    - Questions should still connect to the learner's interests when possible.
+Example format (follow EXACTLY):
+[
+  {
+    "question": "Translate to English: 'Aso'",
+    "options": ["Cat", "Dog", "Bird", "Fish"],
+    "correctIndex": 1,
+    "clue": "This is a common pet that barks.",
+    "explanation": "'Aso' means 'Dog' in English."
+  }
+]
 
-    Rules:
-    1. Each question must provide a Filipino word or phrase, and the learner chooses the correct English equivalent.
-    2. Provide exactly 4 answer options per question.
-    3. For each question, set "correctIndex" to the 0-based index of the correct option.
-    4. Include a "clue" field that provides context or hints about the word's usage (e.g., "This word describes an animal" or "You might use this word when talking about feelings").
-    5. Include an "explanation" field that shows why the correct English translation is correct.
-    6. Keep translations age-appropriate and aligned with everyday vocabulary.
-    7. VARIETY IS KEY: Use different Filipino words, cover different topics, and include various word types (nouns, verbs, adjectives).
-    8. Return only valid JSON, no extra text or formatting.
-
-    Example JSON:
-    [
-        {
-        "question": "Translate to English: 'Aso'",
-        "options": ["Cat", "Dog", "Bird", "Fish"],
-        "correctIndex": 1,
-        "clue": "This is a common pet that barks.",
-        "explanation": "'Aso' means 'Dog' in English."
-        },
-        {
-        "question": "Translate to English: 'Maganda'",
-        "options": ["Ugly", "Beautiful", "Small", "Big"],
-        "correctIndex": 1,
-        "clue": "This word is used to describe something pleasing to look at.",
-        "explanation": "'Maganda' means 'Beautiful' in English."
-        }
-    ]
-  `;
+IMPORTANT: Start your response with [ and end with ]. No text before or after.
+Generate 15 questions now:`;
 }
 
 function sentenceConstructionPrompt(level: CEFRLevel, interests: string[], gameMode: string, difficulty: string): string {
-  return `
-    You are a quiz creator for EngliQuest, a mobile English learning app.
+  return `You are a sentence construction quiz creator for EngliQuest. Generate EXACTLY 15 questions.
 
-    Generate a quiz set of 15 UNIQUE and DIVERSE multiple-choice questions in **strict JSON format only**.
-    Do not include explanations, notes, markdown, or code fences outside of JSON.
+CRITICAL JSON REQUIREMENTS:
+- Return ONLY a valid JSON array
+- NO markdown, NO code blocks, NO extra text
+- Start with [ and end with ]
+- EXACTLY 15 questions
+- Each question MUST have: question, options (array of 4 strings), correctIndex (0-3), clue, explanation
 
-    Details:
-    - Target Level: ${level} (${getLevelDescription(level)})
-    - Game Mode: ${gameMode}
-    - Difficulty: ${difficulty}
-    - Interests: ${interests.join(", ")}
+Target: ${level} (${getLevelGuidelines(level)}) | Difficulty: ${difficulty}
+Interests: ${interests.join(", ")}
 
-    IMPORTANT: Create completely NEW and DIFFERENT sentence construction questions each time. Use varied word combinations and diverse sentence topics. Avoid repetition.
+Sentence Construction Focus:
+- A sentence is a grammatically complete string of words expressing a complete thought
+- Learners often struggle with verb tenses, capitalization, and punctuation errors
+- Sentence Construction mode presents jumbled words that learners must rearrange into grammatically correct sentences
+- This helps learners improve syntax, word order, and logical flow of English grammar
+- Each question must tie back to the learner's interests when possible, using different scenarios
 
-    Sentence Construction Focus:
-    - A sentence is a grammatically complete string of words expressing a complete thought.
-    - Learners often struggle with verb tenses, capitalization, and punctuation errors.
-    - Sentence Construction mode presents jumbled words that learners must rearrange into grammatically correct sentences.
-    - This helps learners improve syntax, word order, and logical flow of English grammar.
+Example format (follow EXACTLY):
+[
+  {
+    "question": "Rearrange the words: ['the', 'dog', 'brown', 'big', 'ran']",
+    "options": ["The dog brown big ran.", "Big brown the dog ran.", "The big brown dog ran.", "Dog ran the big brown."],
+    "correctIndex": 2,
+    "clue": "Remember: adjectives come before the noun they describe.",
+    "explanation": "The correct sentence is 'The big brown dog ran.' because adjectives should precede the noun in proper order."
+  }
+]
 
-    Rules:
-    1. Each question must provide a string like: "Rearrange the words: ['word1', 'word2', ...]".
-    2. Provide exactly 4 answer options: each option should be a possible sentence arrangement.
-    3. Only one option should be grammatically correct.
-    4. Set "correctIndex" to the 0-based index of the correct option.
-    5. Include a "clue" field with a hint about sentence structure (e.g., "Start with the subject" or "Adjectives come before nouns").
-    6. Add an "explanation" field showing why the correct arrangement is correct.
-    7. Each question must tie back to the learner's interests when possible, using DIFFERENT scenarios.
-    8. VARIETY IS KEY: Use different word combinations, different sentence lengths, and different topics.
-    9. Return valid JSON only. No trailing commas, no escape characters, no markdown.
-
-    Example JSON:
-    [
-      {
-        "question": "Rearrange the words: ['the', 'dog', 'brown', 'big', 'ran']",
-        "options": [
-          "The dog brown big ran.",
-          "Big brown the dog ran.",
-          "The big brown dog ran.",
-          "Dog ran the big brown."
-        ],
-        "correctIndex": 2,
-        "clue": "Remember: adjectives come before the noun they describe.",
-        "explanation": "The correct sentence is 'The big brown dog ran.' because adjectives should precede the noun in proper order."
-      }
-    ]
-  `;
+IMPORTANT: Start your response with [ and end with ]. No text before or after.
+Generate 15 questions now:`;
 }
 
 function readingComprehensionPrompt(level: CEFRLevel, interests: string[], gameMode: string, difficulty: string): string {
-  return `
-    You are a quiz creator for EngliQuest, a mobile English learning app.
+  return `You are a reading comprehension quiz creator for EngliQuest. Generate EXACTLY 15 questions.
 
-    Generate a quiz set of 15 UNIQUE and DIVERSE reading comprehension questions in **strict JSON format only**.
-    Do not include explanations, notes, markdown, or code fences outside of JSON.
+CRITICAL JSON REQUIREMENTS:
+- Return ONLY a valid JSON array
+- NO markdown, NO code blocks, NO extra text, NO explanations before or after
+- Start your response with [ and end with ]
+- EXACTLY 15 questions
+- Each question MUST have ALL these fields: passage, question, options (array of 4 strings), correctIndex (0-3), clue, explanation
+- All text must be properly escaped (use \\n for line breaks if needed)
+- No trailing commas after last item
 
-    Details:
-    - Target Level: ${level} (${getLevelDescription(level)})
-    - Game Mode: ${gameMode}
-    - Difficulty: ${difficulty}
-    - Interests: ${interests.join(", ")}
+Target: ${level} (${getLevelGuidelines(level)}) | Difficulty: ${difficulty}
+Interests: ${interests.join(", ")}
 
-    IMPORTANT: Create completely NEW and DIFFERENT reading passages and questions each time. Use varied stories, diverse characters, and creative scenarios. Avoid repetition.
+Reading Comprehension Focus:
+- Learners will read short passages tailored to their interests
+- Passages must be simple, age-appropriate, and engaging for ${level} level
+- Each passage should be 2-4 sentences long
+- Questions should check understanding of main idea, details, inference, and "what happens next"
+- Questions must tie back to the learner's interests when possible, using different stories and characters
 
-    Reading Comprehension Focus:
-    - Learners will read short passages tailored to their interests.
-    - Passages must be simple, age-appropriate, and engaging for ${level} level: ${getLevelGuidelines(level)}.
-    - Each passage should be 2–4 sentences long.
-    - Questions should check understanding of main idea, details, inference, and "what happens next".
+Example format (follow EXACTLY):
+[
+  {
+    "passage": "Anna loves basketball. She practices every afternoon after school.",
+    "question": "What does Anna do after school?",
+    "options": ["Studies math", "Plays basketball", "Goes shopping", "Cooks dinner"],
+    "correctIndex": 1,
+    "clue": "Check what the passage says Anna does in the afternoon.",
+    "explanation": "The passage says Anna practices basketball after school."
+  }
+]
 
-    Rules:
-    1. Each item must contain:
-       - "passage": a short story or text (2–4 sentences).
-       - "question": a comprehension question about the passage.
-       - "options": exactly 4 answer choices (multiple-choice only).
-       - "correctIndex": the 0-based index of the correct option.
-       - "clue": a hint directing learners where to look in the passage (e.g., "Look at the second sentence" or "Think about what happens at the end").
-       - "explanation": a short reason why the correct answer is correct.
-    2. Questions must tie back to the learner's interests when possible, using DIFFERENT stories and characters.
-    3. VARIETY IS KEY: Use different story topics, different character names, different activities, and different question types.
-    4. Return valid JSON only. No trailing commas, no escape characters, no markdown.
+IMPORTANT: 
+- Do NOT add any text before the opening bracket [
+- Do NOT add any text after the closing bracket ]
+- Do NOT use markdown code blocks
+- Generate 15 questions following this exact structure
 
-    Example JSON:
-    [
-      {
-        "passage": "Anna loves basketball. She practices every afternoon after school.",
-        "question": "What does Anna do after school?",
-        "options": ["She studies math", "She plays basketball", "She goes shopping", "She cooks dinner"],
-        "correctIndex": 1,
-        "clue": "Check what the passage says Anna does in the afternoon.",
-        "explanation": "The passage says Anna practices basketball after school."
-      }
-    ]
-  `;
+Generate 15 questions now:`;
 }
 
 function getOptimizedModel() {
   return genAI.getGenerativeModel({ 
     model: "gemini-2.5-flash-lite",
     generationConfig: {
-      maxOutputTokens: 3000,
+      maxOutputTokens: 4000,
       temperature: 1.0,
       topP: 0.95,
     }
