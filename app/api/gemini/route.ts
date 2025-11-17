@@ -139,7 +139,7 @@ async function generateQuizzesInBackground(
     await generationRef.update({
       status: 'completed',
       progress: 30,
-      total: 3,
+      total: 30,
       completedAt: new Date(),
       updatedAt: new Date(),
     });
