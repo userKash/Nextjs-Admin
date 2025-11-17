@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable react-hooks/set-state-in-effect */
 "use client"
 
 import React, { useState, useMemo, useEffect } from 'react';
@@ -5,6 +7,8 @@ import { Search, ChevronRight, ChevronDown, X, AlertTriangle, RefreshCw, CheckCi
 import { approveQuizSet, approveAllPendingQuizSets, regenerateQuizSet, triggerQuizGeneration } from '@/lib/quizActions';
 import { useUsers, useQuizGenerations, useUserQuizSets, useAllUserQuizCounts, type QuizSet } from '@/app/hooks/useFirebaseData';
 import { enhanceUserWithQuizCounts, enhanceUserWithQuizData, formatDate, organizeQuizSets, getQuizSetNumber, type EnhancedUser } from '@/lib/userHelpers';
+import ConfirmModal from "./components/ConfirmModal";
+
 
 type CEFRLevel = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
 
@@ -30,6 +34,16 @@ export default function UsersManagementPage() {
   const { generations, loading: generationsLoading } = useQuizGenerations();
   const { counts, loading: countsLoading } = useAllUserQuizCounts(); 
   const { quizSets: selectedUserQuizSets, loading: quizSetsLoading } = useUserQuizSets(selectedUser?.id || null);
+
+  //custom modals
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmMessage, setConfirmMessage] = useState("");
+  const [confirmAction, setConfirmAction] = useState<() => void>(() => {});
+  const askConfirm = (message: string, onConfirm: () => void) => {
+  setConfirmMessage(message);
+  setConfirmAction(() => onConfirm);
+  setConfirmOpen(true);
+};
 
   const enhancedUsers = useMemo(() => {
     return users.map(user => {
@@ -148,22 +162,24 @@ export default function UsersManagementPage() {
 
   const handleRegenerateQuizSet = async () => {
     if (!selectedQuizSet) return;
-    
-    if (!confirm(`Regenerate Quiz Set #${selectedQuizSet.setNumber}? This will create new questions and overwrite the current ones.`)) {
-      return;
-    }
 
-    setActionLoading(true);
-    const result = await regenerateQuizSet(selectedQuizSet.id);
-    setActionLoading(false);
+    askConfirm(
+      `Regenerate Quiz Set #${selectedQuizSet.setNumber}? This will overwrite existing questions.`,
+      async () => {
+        setConfirmOpen(false);
+        setActionLoading(true);
 
-    if (result.success) {
-      alert(`Quiz Set #${selectedQuizSet.setNumber} regenerated successfully with new questions!`);
-      setSelectedQuizSet(null);
-    } else {
-      alert(`Error: ${result.error}`);
-    }
+        const result = await regenerateQuizSet(selectedQuizSet.id);
+
+        setActionLoading(false);
+        alert(result.success
+          ? `Quiz Set #${selectedQuizSet.setNumber} regenerated!`
+          : `Error: ${result.error}`
+        );
+      }
+    );
   };
+
 
   const handleApproveAllPending = async (userId: string) => {
     const pendingCount = organizedQuizSets.filter(set => set.status === 'pending' || !set.status).length;
@@ -210,20 +226,23 @@ export default function UsersManagementPage() {
   };
 
   const handleTriggerGeneration = async (userId: string) => {
-    if (!confirm('Trigger quiz generation for this user? This will create 30 quiz sets and may take 1-2 minutes.')) {
-      return;
-    }
+    askConfirm(
+      "Trigger quiz generation for this user? This will create 30 quiz sets and may take 1–2 minutes.",
+      async () => {
+        setConfirmOpen(false);
+        setActionLoading(true);
 
-    setActionLoading(true);
-    const result = await triggerQuizGeneration(userId);
-    setActionLoading(false);
+        const result = await triggerQuizGeneration(userId);
+        setActionLoading(false);
 
-    if (result.success) {
-      alert('Quiz generation triggered! The process will take 1-2 minutes. You can monitor the progress in the background.');
-    } else {
-      alert(`Error: ${result.error}`);
-    }
+        alert(result.success
+          ? "Quiz generation triggered!"
+          : `Error: ${result.error}`
+        );
+      }
+    );
   };
+
 
   const getStatusBadge = (user: EnhancedUser) => {
     if (user.status === 'no-generation' || user.generationStatus?.status === 'pending') {
@@ -417,33 +436,40 @@ export default function UsersManagementPage() {
         </div>
       </div>
 
-      {/* User Detail Modal - Level-based View */}
-      {selectedUser && !selectedQuizSet && updatedSelectedUser && (
-        <UserDetailModal
-          user={updatedSelectedUser}
-          levelGroups={levelGroups}
-          expandedLevels={expandedLevels}
-          loading={quizSetsLoading}
-          onClose={() => setSelectedUser(null)}
-          onToggleLevel={toggleLevel}
-          onViewQuizSet={handleViewQuizSet}
-          onApproveLevelQuizzes={handleApproveLevelQuizzes}
-          onApproveAll={handleApproveAllPending}
-          actionLoading={actionLoading}
-          showAllApprovedNotification={showAllApprovedNotification}
-        />
-      )}
+  {/* User Detail Modal - Level-based View */}
+  {selectedUser && !selectedQuizSet && updatedSelectedUser && (
+    <UserDetailModal
+      user={updatedSelectedUser}
+      levelGroups={levelGroups}
+      expandedLevels={expandedLevels}
+      loading={quizSetsLoading}
+      onClose={() => setSelectedUser(null)}
+      onToggleLevel={toggleLevel}
+      onViewQuizSet={handleViewQuizSet}
+      onApproveLevelQuizzes={handleApproveLevelQuizzes}
+      onApproveAll={handleApproveAllPending}
+      actionLoading={actionLoading}
+      showAllApprovedNotification={showAllApprovedNotification}
+    />
+  )}
 
-      {/* Quiz Set Detail Modal */}
-      {selectedQuizSet && (
-        <QuizSetDetailModal
-          quizSet={selectedQuizSet}
-          onClose={() => setSelectedQuizSet(null)}
-          onApprove={handleApproveQuizSet}
-          onRegenerate={handleRegenerateQuizSet}
-          actionLoading={actionLoading}
-        />
-      )}
+  {/* Quiz Set Detail Modal */}
+  {selectedQuizSet && (
+    <QuizSetDetailModal
+      quizSet={selectedQuizSet}
+      onClose={() => setSelectedQuizSet(null)}
+      onApprove={handleApproveQuizSet}
+      onRegenerate={handleRegenerateQuizSet}
+      actionLoading={actionLoading}
+    />
+  )}
+  {/*Confirm Modal Implementation */}
+  <ConfirmModal
+    open={confirmOpen}
+    message={confirmMessage}
+    onCancel={() => setConfirmOpen(false)}
+    onConfirm={confirmAction}
+  />
     </div>
   );
 }
