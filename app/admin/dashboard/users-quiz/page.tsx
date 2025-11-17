@@ -145,20 +145,34 @@ export default function UsersManagementPage() {
     setSelectedQuizSet(set);
   };
 
-  const handleApproveQuizSet = async () => {
-    if (!selectedQuizSet) return;
-    
-    setActionLoading(true);
-    const result = await approveQuizSet(selectedQuizSet.id);
-    setActionLoading(false);
+const handleApproveQuizSet = async () => {
+  if (!selectedQuizSet) return;
 
-    if (result.success) {
-      alert(`Quiz Set #${selectedQuizSet.setNumber} approved successfully!`);
-      setSelectedQuizSet(null);
-    } else {
-      alert(`Error: ${result.error}`);
+  askConfirm(
+    `Approve Quiz Set #${selectedQuizSet.setNumber}?`,
+    async () => {
+      setConfirmOpen(false);
+      setActionLoading(true);
+      const result = await approveQuizSet(selectedQuizSet.id);
+      setActionLoading(false);
+      if (result.success) {
+        askConfirm(
+          `Quiz Set #${selectedQuizSet.setNumber} approved successfully!`,
+          () => {
+            setConfirmOpen(false);
+            setSelectedQuizSet(null); 
+          }
+        );
+      } else {
+        askConfirm(
+          `Error: ${result.error}`,
+          () => setConfirmOpen(false)
+        );
+      }
     }
-  };
+  );
+};
+
 
   const handleRegenerateQuizSet = async () => {
     if (!selectedQuizSet) return;
@@ -181,49 +195,64 @@ export default function UsersManagementPage() {
   };
 
 
-  const handleApproveAllPending = async (userId: string) => {
-    const pendingCount = organizedQuizSets.filter(set => set.status === 'pending' || !set.status).length;
-    
-    if (!confirm(`Approve all ${pendingCount} pending quiz sets for this user?`)) {
-      return;
-    }
+  const handleApproveAllPending = (userId: string) => {
+    const pendingCount = organizedQuizSets.filter(
+      set => set.status === "pending" || !set.status
+    ).length;
 
-    setActionLoading(true);
-    const result = await approveAllPendingQuizSets(userId);
-    setActionLoading(false);
+    askConfirm(
+      `Approve all ${pendingCount} pending quiz sets for this user?`,
+      async () => {
+        setConfirmOpen(false);
+        setActionLoading(true);
 
-    if (result.success) {
-      alert(`All pending quiz sets approved! (${result.approved || pendingCount} quiz sets)`);
-    } else {
-      alert(`Error: ${result.error}`);
-    }
-  };
+        const result = await approveAllPendingQuizSets(userId);
 
-  const handleApproveLevelQuizzes = async (userId: string, level: CEFRLevel) => {
-    const levelGroup = levelGroups.find(g => g.level === level);
-    if (!levelGroup || levelGroup.pending === 0) return;
+        setActionLoading(false);
 
-    if (!confirm(`Approve all ${levelGroup.pending} pending quiz sets for ${level}?`)) {
-      return;
-    }
-
-    setActionLoading(true);
-    
-    // Approve each pending quiz in the level
-    const pendingQuizzes = levelGroup.quizSets.filter(q => q.status === 'pending' || !q.status);
-    const results = await Promise.all(
-      pendingQuizzes.map(quiz => approveQuizSet(quiz.id))
+        askConfirm(
+          result.success
+            ? `All pending quiz sets approved! (${result.approved || pendingCount} quiz sets)`
+            : `Error: ${result.error}`,
+          () => setConfirmOpen(false)
+        );
+      }
     );
-
-    setActionLoading(false);
-
-    const successCount = results.filter(r => r.success).length;
-    if (successCount === pendingQuizzes.length) {
-      alert(`All ${level} quiz sets approved successfully!`);
-    } else {
-      alert(`Approved ${successCount} of ${pendingQuizzes.length} quiz sets. Some failed.`);
-    }
   };
+
+
+const handleApproveLevelQuizzes = async (userId: string, level: CEFRLevel) => {
+  const levelGroup = levelGroups.find(g => g.level === level);
+  if (!levelGroup || levelGroup.pending === 0) return;
+
+  const pendingQuizzes = levelGroup.quizSets.filter(
+    q => q.status === "pending" || !q.status
+  );
+
+  askConfirm(
+    `Approve all ${levelGroup.pending} pending quiz sets for ${level}?`,
+    async () => {
+      setConfirmOpen(false);
+      setActionLoading(true);
+
+      const results = await Promise.all(
+        pendingQuizzes.map(quiz => approveQuizSet(quiz.id))
+      );
+
+      setActionLoading(false);
+
+      const successCount = results.filter(r => r.success).length;
+
+      askConfirm(
+        successCount === pendingQuizzes.length
+          ? `All ${level} quiz sets approved successfully!`
+          : `Approved ${successCount} of ${pendingQuizzes.length} quiz sets. Some failed.`,
+        () => setConfirmOpen(false)
+      );
+    }
+  );
+};
+
 
   const handleTriggerGeneration = async (userId: string) => {
     askConfirm(
