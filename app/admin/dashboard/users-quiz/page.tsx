@@ -36,15 +36,38 @@ export default function UsersManagementPage() {
   const { quizSets: selectedUserQuizSets, loading: quizSetsLoading } = useUserQuizSets(selectedUser?.id || null);
 
   //custom modals
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [confirmMessage, setConfirmMessage] = useState("");
-  const [confirmAction, setConfirmAction] = useState<() => void>(() => {});
-  const askConfirm = (message: string, onConfirm: () => void) => {
-  setConfirmMessage(message);
-  setConfirmAction(() => onConfirm);
-  setConfirmOpen(true);
-};
+//custom modals
+const [confirmOpen, setConfirmOpen] = useState(false);
+const [confirmMode, setConfirmMode] = useState<"confirm" | "result">("confirm");
+const [confirmTitle, setConfirmTitle] = useState<string>("Are you sure?");
+const [confirmMessage, setConfirmMessage] = useState<string>("");
+const [confirmLabel, setConfirmLabel] = useState<string>("Confirm");
+const [cancelLabel, setCancelLabel] = useState<string>("Cancel");
+const [confirmAction, setConfirmAction] = useState<() => void>(() => {});
 
+  const askConfirm = (
+    message: string,
+    onConfirm: () => void,
+    {
+      title = "Are you sure?",
+      mode = "confirm",
+      confirmLabel = "Confirm",
+      cancelLabel = "Cancel",
+    }: {
+      title?: string;
+      mode?: "confirm" | "result";
+      confirmLabel?: string;
+      cancelLabel?: string;
+    } = {}
+  ) => {
+    setConfirmTitle(title);
+    setConfirmMessage(message);
+    setConfirmMode(mode);
+    setConfirmLabel(confirmLabel);
+    setCancelLabel(cancelLabel);
+    setConfirmAction(() => onConfirm);
+    setConfirmOpen(true);
+  };
   const enhancedUsers = useMemo(() => {
     return users.map(user => {
       const generation = generations[user.id];
@@ -153,72 +176,79 @@ const handleApproveQuizSet = async () => {
     async () => {
       setConfirmOpen(false);
       setActionLoading(true);
+
       const result = await approveQuizSet(selectedQuizSet.id);
+
       setActionLoading(false);
-      if (result.success) {
-        askConfirm(
-          `Quiz Set #${selectedQuizSet.setNumber} approved successfully!`,
-          () => {
-            setConfirmOpen(false);
-            setSelectedQuizSet(null); 
-          }
-        );
-      } else {
-        askConfirm(
-          `Error: ${result.error}`,
-          () => setConfirmOpen(false)
-        );
-      }
+
+      askConfirm(
+        result.success
+          ? `Quiz Set #${selectedQuizSet.setNumber} approved successfully!`
+          : `Error: ${result.error}`,
+        () => {
+          setConfirmOpen(false);
+          if (result.success) setSelectedQuizSet(null);
+        },
+        { mode: "result", confirmLabel: "OK", cancelLabel: "" }
+      );
     }
   );
 };
 
 
-  const handleRegenerateQuizSet = async () => {
-    if (!selectedQuizSet) return;
 
-    askConfirm(
-      `Regenerate Quiz Set #${selectedQuizSet.setNumber}? This will overwrite existing questions.`,
-      async () => {
-        setConfirmOpen(false);
-        setActionLoading(true);
+const handleRegenerateQuizSet = async () => {
+  if (!selectedQuizSet) return;
 
-        const result = await regenerateQuizSet(selectedQuizSet.id);
+  askConfirm(
+    `Regenerate Quiz Set #${selectedQuizSet.setNumber}? This will overwrite existing questions.`,
+    async () => {
+      setActionLoading(true);
 
-        setActionLoading(false);
-        alert(result.success
-          ? `Quiz Set #${selectedQuizSet.setNumber} regenerated!`
+      const result = await regenerateQuizSet(selectedQuizSet.id);
+
+      setActionLoading(false);
+
+      // Update modal result message
+      setConfirmMessage(
+        result.success
+          ? `Quiz Set #${selectedQuizSet.setNumber} regenerated successfully!`
           : `Error: ${result.error}`
-        );
-      }
-    );
-  };
+      );
+
+      return result.success; // triggers success mode in modal
+    }
+  );
+};
 
 
-  const handleApproveAllPending = (userId: string) => {
-    const pendingCount = organizedQuizSets.filter(
-      set => set.status === "pending" || !set.status
-    ).length;
 
-    askConfirm(
-      `Approve all ${pendingCount} pending quiz sets for this user?`,
-      async () => {
-        setConfirmOpen(false);
-        setActionLoading(true);
+const handleApproveAllPending = (userId: string) => {
+  const pendingCount = organizedQuizSets.filter(
+    set => set.status === "pending" || !set.status
+  ).length;
 
-        const result = await approveAllPendingQuizSets(userId);
+  askConfirm(
+    `Approve all ${pendingCount} pending quiz sets for this user?`,
+    async () => {
+      setActionLoading(true);
 
-        setActionLoading(false);
+      const result = await approveAllPendingQuizSets(userId);
 
-        askConfirm(
-          result.success
-            ? `All pending quiz sets approved! (${result.approved || pendingCount} quiz sets)`
-            : `Error: ${result.error}`,
-          () => setConfirmOpen(false)
-        );
-      }
-    );
-  };
+      setActionLoading(false);
+
+      setConfirmMessage(
+        result.success
+          ? `All pending quiz sets approved! (${result.approved || pendingCount})`
+          : `Error: ${result.error}`
+      );
+
+      return result.success;
+    }
+  );
+};
+
+
 
 
 const handleApproveLevelQuizzes = async (userId: string, level: CEFRLevel) => {
@@ -232,45 +262,50 @@ const handleApproveLevelQuizzes = async (userId: string, level: CEFRLevel) => {
   askConfirm(
     `Approve all ${levelGroup.pending} pending quiz sets for ${level}?`,
     async () => {
-      setConfirmOpen(false);
       setActionLoading(true);
 
       const results = await Promise.all(
-        pendingQuizzes.map(quiz => approveQuizSet(quiz.id))
+        pendingQuizzes.map(q => approveQuizSet(q.id))
       );
 
       setActionLoading(false);
 
       const successCount = results.filter(r => r.success).length;
 
-      askConfirm(
+      setConfirmMessage(
         successCount === pendingQuizzes.length
           ? `All ${level} quiz sets approved successfully!`
-          : `Approved ${successCount} of ${pendingQuizzes.length} quiz sets. Some failed.`,
-        () => setConfirmOpen(false)
+          : `Approved ${successCount} of ${pendingQuizzes.length}.`
       );
+
+      return successCount === pendingQuizzes.length;
     }
   );
 };
 
 
-  const handleTriggerGeneration = async (userId: string) => {
-    askConfirm(
-      "Trigger quiz generation for this user? This will create 30 quiz sets and may take 1–2 minutes.",
-      async () => {
-        setConfirmOpen(false);
-        setActionLoading(true);
 
-        const result = await triggerQuizGeneration(userId);
-        setActionLoading(false);
+const handleTriggerGeneration = async (userId: string) => {
+  askConfirm(
+    "Trigger quiz generation for this user? This will create 30 quiz sets and may take 1–2 minutes.",
+    async () => {
+      setActionLoading(true);
 
-        alert(result.success
-          ? "Quiz generation triggered!"
+      const result = await triggerQuizGeneration(userId);
+
+      setActionLoading(false);
+
+      setConfirmMessage(
+        result.success
+          ? "Quiz generation triggered successfully!"
           : `Error: ${result.error}`
-        );
-      }
-    );
-  };
+      );
+
+      return result.success;
+    }
+  );
+};
+
 
 
   const getStatusBadge = (user: EnhancedUser) => {
@@ -464,8 +499,6 @@ const handleApproveLevelQuizzes = async (userId: string, level: CEFRLevel) => {
           )}
         </div>
       </div>
-
-  {/* User Detail Modal - Level-based View */}
   {selectedUser && !selectedQuizSet && updatedSelectedUser && (
     <UserDetailModal
       user={updatedSelectedUser}
@@ -493,17 +526,27 @@ const handleApproveLevelQuizzes = async (userId: string, level: CEFRLevel) => {
     />
   )}
   {/*Confirm Modal Implementation */}
-  <ConfirmModal
-    open={confirmOpen}
-    message={confirmMessage}
-    onCancel={() => setConfirmOpen(false)}
-    onConfirm={confirmAction}
-  />
+<ConfirmModal
+  open={confirmOpen}
+  mode={confirmMode}
+  title={confirmTitle}
+  message={confirmMessage}
+  confirmLabel={confirmLabel}
+  cancelLabel={cancelLabel}
+  onConfirm={async () => {
+    const result = await confirmAction();
+    setConfirmMode("result");
+    setConfirmLabel("OK");
+    setCancelLabel("");
+    return result; 
+  }}
+  onCancel={() => {
+    setConfirmOpen(false);
+  }}
+/>
     </div>
   );
 }
-
-// User Detail Modal Component with Level Groups
 function UserDetailModal({
   user,
   levelGroups,
