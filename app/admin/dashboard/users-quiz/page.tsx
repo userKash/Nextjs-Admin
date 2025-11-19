@@ -175,22 +175,32 @@ const handleApproveQuizSet = async () => {
     `Approve Quiz Set #${selectedQuizSet.setNumber}?`,
     async () => {
       setConfirmOpen(false);
-      setActionLoading(true);
 
-      const result = await approveQuizSet(selectedQuizSet.id);
+      try {
+        setActionLoading(true);
+        const result = await approveQuizSet(selectedQuizSet.id);
 
-      setActionLoading(false);
-
-      askConfirm(
-        result.success
-          ? `Quiz Set #${selectedQuizSet.setNumber} approved successfully!`
-          : `Error: ${result.error}`,
-        () => {
-          setConfirmOpen(false);
-          if (result.success) setSelectedQuizSet(null);
-        },
-        { mode: "result", confirmLabel: "OK", cancelLabel: "" }
-      );
+        askConfirm(
+          result.success
+            ? `Quiz Set #${selectedQuizSet.setNumber} approved successfully!`
+            : `Error: ${result.error}`,
+          () => {
+            setConfirmOpen(false);
+            if (result.success) setSelectedQuizSet(null);
+          },
+          { mode: "result", confirmLabel: "OK", cancelLabel: "" }
+        );
+      } catch (error) {
+        askConfirm(
+          `Error: ${error instanceof Error ? error.message : 'An unexpected error occurred'}`,
+          () => {
+            setConfirmOpen(false);
+          },
+          { mode: "result", confirmLabel: "OK", cancelLabel: "" }
+        );
+      } finally {
+        setActionLoading(false);
+      }
     }
   );
 };
@@ -203,20 +213,26 @@ const handleRegenerateQuizSet = async () => {
   askConfirm(
     `Regenerate Quiz Set #${selectedQuizSet.setNumber}? This will overwrite existing questions.`,
     async () => {
-      setActionLoading(true);
+      try {
+        setActionLoading(true);
+        const result = await regenerateQuizSet(selectedQuizSet.id);
 
-      const result = await regenerateQuizSet(selectedQuizSet.id);
+        // Update modal result message
+        setConfirmMessage(
+          result.success
+            ? `Quiz Set #${selectedQuizSet.setNumber} regenerated successfully!`
+            : `Error: ${result.error}`
+        );
 
-      setActionLoading(false);
-
-      // Update modal result message
-      setConfirmMessage(
-        result.success
-          ? `Quiz Set #${selectedQuizSet.setNumber} regenerated successfully!`
-          : `Error: ${result.error}`
-      );
-
-      return result.success; // triggers success mode in modal
+        return result.success; // triggers success mode in modal
+      } catch (error) {
+        setConfirmMessage(
+          `Error: ${error instanceof Error ? error.message : 'An unexpected error occurred'}`
+        );
+        return false;
+      } finally {
+        setActionLoading(false);
+      }
     }
   );
 };
@@ -231,19 +247,25 @@ const handleApproveAllPending = (userId: string) => {
   askConfirm(
     `Approve all ${pendingCount} pending quiz sets for this user?`,
     async () => {
-      setActionLoading(true);
+      try {
+        setActionLoading(true);
+        const result = await approveAllPendingQuizSets(userId);
 
-      const result = await approveAllPendingQuizSets(userId);
+        setConfirmMessage(
+          result.success
+            ? `All pending quiz sets approved! (${result.approved || pendingCount})`
+            : `Error: ${result.error}`
+        );
 
-      setActionLoading(false);
-
-      setConfirmMessage(
-        result.success
-          ? `All pending quiz sets approved! (${result.approved || pendingCount})`
-          : `Error: ${result.error}`
-      );
-
-      return result.success;
+        return result.success;
+      } catch (error) {
+        setConfirmMessage(
+          `Error: ${error instanceof Error ? error.message : 'An unexpected error occurred'}`
+        );
+        return false;
+      } finally {
+        setActionLoading(false);
+      }
     }
   );
 };
@@ -262,23 +284,30 @@ const handleApproveLevelQuizzes = async (userId: string, level: CEFRLevel) => {
   askConfirm(
     `Approve all ${levelGroup.pending} pending quiz sets for ${level}?`,
     async () => {
-      setActionLoading(true);
+      try {
+        setActionLoading(true);
 
-      const results = await Promise.all(
-        pendingQuizzes.map(q => approveQuizSet(q.id))
-      );
+        const results = await Promise.all(
+          pendingQuizzes.map(q => approveQuizSet(q.id))
+        );
 
-      setActionLoading(false);
+        const successCount = results.filter(r => r.success).length;
 
-      const successCount = results.filter(r => r.success).length;
+        setConfirmMessage(
+          successCount === pendingQuizzes.length
+            ? `All ${level} quiz sets approved successfully!`
+            : `Approved ${successCount} of ${pendingQuizzes.length}.`
+        );
 
-      setConfirmMessage(
-        successCount === pendingQuizzes.length
-          ? `All ${level} quiz sets approved successfully!`
-          : `Approved ${successCount} of ${pendingQuizzes.length}.`
-      );
-
-      return successCount === pendingQuizzes.length;
+        return successCount === pendingQuizzes.length;
+      } catch (error) {
+        setConfirmMessage(
+          `Error: ${error instanceof Error ? error.message : 'An unexpected error occurred'}`
+        );
+        return false;
+      } finally {
+        setActionLoading(false);
+      }
     }
   );
 };
@@ -289,19 +318,25 @@ const handleTriggerGeneration = async (userId: string) => {
   askConfirm(
     "Trigger quiz generation for this user? This will create 30 quiz sets and may take 1–2 minutes.",
     async () => {
-      setActionLoading(true);
+      try {
+        setActionLoading(true);
+        const result = await triggerQuizGeneration(userId);
 
-      const result = await triggerQuizGeneration(userId);
+        setConfirmMessage(
+          result.success
+            ? "Quiz generation triggered successfully!"
+            : `Error: ${result.error}`
+        );
 
-      setActionLoading(false);
-
-      setConfirmMessage(
-        result.success
-          ? "Quiz generation triggered successfully!"
-          : `Error: ${result.error}`
-      );
-
-      return result.success;
+        return result.success;
+      } catch (error) {
+        setConfirmMessage(
+          `Error: ${error instanceof Error ? error.message : 'An unexpected error occurred'}`
+        );
+        return false;
+      } finally {
+        setActionLoading(false);
+      }
     }
   );
 };
