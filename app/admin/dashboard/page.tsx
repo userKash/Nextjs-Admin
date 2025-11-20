@@ -42,6 +42,8 @@ interface QuizData {
   status?: string;
   difficulty?: string;
   level?: string;
+  gameMode?: string;
+  questions?: any[];
   updatedAt?: Timestamp;
 }
 
@@ -155,9 +157,29 @@ export default function DashboardAnalytics() {
       const pendingApproval = quizzes.filter((q) => q.status === "pending").length;
       const approvedQuizzes = quizzes.filter((q) => q.status === "approved").length;
 
+      // Count all active quiz sets (all game modes across all levels)
+      const activeQuizSets = quizzes.length;
+
+      // Calculate total questions from all quiz sets
+      const totalQuestions = quizzes.reduce((sum, quiz) => {
+        const questionCount = Array.isArray(quiz.questions) ? quiz.questions.length : 0;
+        return sum + questionCount;
+      }, 0);
+
       const levels = ["A1", "A2", "B1", "B2", "C1", "C2"];
       const dist = levels.map((level) => {
-        const sets = quizzes.filter((q) => q.level === level);
+        // Case-insensitive level filtering
+        const sets = quizzes.filter((q) =>
+          q.level && q.level.toUpperCase() === level.toUpperCase()
+        );
+
+        // Debug logging
+        console.log(`Level ${level}: ${sets.length} quiz sets`, {
+          easy: sets.filter((q) => q.difficulty === "easy").length,
+          medium: sets.filter((q) => q.difficulty === "medium").length,
+          hard: sets.filter((q) => q.difficulty === "hard").length,
+        });
+
         return {
           level,
           easy: sets.filter((q) => q.difficulty === "easy").length,
@@ -205,11 +227,11 @@ export default function DashboardAnalytics() {
         totalUsers: users.length,
         newUsers,
         userGrowthPercentage,
-        activeQuizzes: quizzes.length,
+        activeQuizzes: activeQuizSets,
         pendingApproval,
         avgScore,
         approvedQuizzes,
-        totalQuestions: quizzes.length * 15,
+        totalQuestions,
       });
 
       setInterestPopularity(interestPopularityArr);
@@ -258,7 +280,7 @@ export default function DashboardAnalytics() {
                 value={stats.activeQuizzes || "No Data"}
                 icon={<BookOpen className="w-5 h-5" />}
                 color="bg-purple-500"
-                subtitle={`${stats.totalQuestions.toLocaleString()} questions`}
+                subtitle={`${stats.totalQuestions.toLocaleString()} total questions`}
               />
 
               <StatCard
