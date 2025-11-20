@@ -193,13 +193,13 @@ export function useAllUserQuizCounts() {
       collection(db, 'quizzes'),
       (snapshot) => {
         const countsData: Record<string, UserQuizCounts> = {};
-        
+
         snapshot.docs.forEach((doc) => {
           const data = doc.data();
           const userId = data.userId;
-          
+
           if (!userId) return;
-          
+
           if (!countsData[userId]) {
             countsData[userId] = {
               total: 0,
@@ -207,16 +207,18 @@ export function useAllUserQuizCounts() {
               pending: 0,
             };
           }
-          
+
           countsData[userId].total++;
-          
+
           if (data.status === 'approved') {
             countsData[userId].approved++;
-          } else {
+          } else if (data.status === 'pending' || !data.status) {
+            // Only count explicitly pending or missing status as pending
+            // Don't count 'regenerating' status
             countsData[userId].pending++;
           }
         });
-        
+
         setCounts(countsData);
         setLoading(false);
       },
