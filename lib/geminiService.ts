@@ -231,6 +231,14 @@ Translation Focus:
 - Questions should connect to the learner's interests when possible
 - Keep translations age-appropriate and aligned with everyday vocabulary
 
+CRITICAL: AVOID SYNONYM ANSWERS
+- Each option must be DISTINCTLY DIFFERENT from the others
+- DO NOT include synonyms or similar meanings in the options
+- BAD example: "Bato" with options ["Stone", "Rock", "Pebble", "Boulder"] - these are all synonyms!
+- GOOD example: "Bato" with options ["Tree", "Rock", "Water", "House"] - clearly different meanings
+- Wrong answers should be completely unrelated words from different categories
+- This ensures only ONE correct answer without confusion
+
 Example format (follow EXACTLY):
 [
   {
