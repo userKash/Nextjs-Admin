@@ -41,17 +41,18 @@ export async function POST(request: NextRequest) {
       regenerationRequestedAt: new Date(),
     });
 
-    // Generate new quiz
+    // Generate new quiz with regeneration flag set to true
     try {
       const result = await createPersonalizedQuizClient(
         userId,
         level as CEFRLevel,
         interests || [],
         gameMode,
-        difficulty
+        difficulty,
+        true 
       );
 
-      console.log(`Generated ${result.questions.length} new questions`);
+      console.log(`Generated ${result.questions.length} new questions with regeneration mode`);
 
       // Overwrite the quiz set with new questions using Admin SDK
       await quizRef.set({
@@ -65,7 +66,7 @@ export async function POST(request: NextRequest) {
         regeneratedAt: new Date(),
         updatedAt: new Date(),
         createdAt: existingData?.createdAt || new Date(), // Preserve original createdAt
-      }, { merge: false }); // merge: false to completely overwrite (except we're setting all fields)
+      }, { merge: false }); // merge: false to completely overwrite 
 
       console.log(`Successfully regenerated quiz: ${quizSetId}`);
 
