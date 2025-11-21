@@ -141,9 +141,19 @@ function getLevelGuidelines(level: CEFRLevel): string {
   }
 }
 
-function vocabularyPrompt(level: CEFRLevel, interests: string[], gameMode: string, difficulty: string): string {
-  return `You are a quiz creator for EngliQuest. Generate EXACTLY 15 vocabulary questions.
+function vocabularyPrompt(level: CEFRLevel, interests: string[], gameMode: string, difficulty: string, isRegeneration?: boolean, seed?: string): string {
+  const regenerationNote = isRegeneration
+    ? `\n\n🔄 REGENERATION MODE - CRITICAL INSTRUCTIONS:
+- This is a REGENERATION request (Seed: ${seed})
+- You MUST generate COMPLETELY DIFFERENT questions from any previous generation
+- Use ENTIRELY NEW vocabulary words, contexts, and scenarios
+- DO NOT repeat any questions or similar patterns from before
+- Create fresh, unique content with different topics and word choices
+- Vary the sentence structures and contexts significantly\n`
+    : '';
 
+  return `You are a quiz creator for EngliQuest. Generate EXACTLY 15 vocabulary questions.
+${regenerationNote}
 CRITICAL JSON REQUIREMENTS:
 - Return ONLY a valid JSON array
 - NO markdown, NO code blocks, NO extra text
@@ -176,9 +186,19 @@ IMPORTANT: Start your response with [ and end with ]. No text before or after.
 Generate 15 questions now:`;
 }
 
-function grammarPrompt(level: CEFRLevel, interests: string[], gameMode: string, difficulty: string): string {
-  return `You are a grammar quiz creator for EngliQuest. Generate EXACTLY 15 grammar questions.
+function grammarPrompt(level: CEFRLevel, interests: string[], gameMode: string, difficulty: string, isRegeneration?: boolean, seed?: string): string {
+  const regenerationNote = isRegeneration
+    ? `\n\n🔄 REGENERATION MODE - CRITICAL INSTRUCTIONS:
+- This is a REGENERATION request (Seed: ${seed})
+- You MUST generate COMPLETELY DIFFERENT questions from any previous generation
+- Use ENTIRELY NEW grammar topics, sentence structures, and scenarios
+- DO NOT repeat any questions or similar patterns from before
+- Create fresh, unique content with different grammar focuses
+- Vary the contexts and examples significantly\n`
+    : '';
 
+  return `You are a grammar quiz creator for EngliQuest. Generate EXACTLY 15 grammar questions.
+${regenerationNote}
 CRITICAL JSON REQUIREMENTS:
 - Return ONLY a valid JSON array
 - NO markdown, NO code blocks, NO extra text
@@ -211,9 +231,19 @@ IMPORTANT: Start your response with [ and end with ]. No text before or after.
 Generate 15 questions now:`;
 }
 
-function translationPrompt(level: CEFRLevel, interests: string[], gameMode: string, difficulty: string): string {
-  return `You are a translation quiz creator for EngliQuest. Generate EXACTLY 15 Filipino to English translation questions.
+function translationPrompt(level: CEFRLevel, interests: string[], gameMode: string, difficulty: string, isRegeneration?: boolean, seed?: string): string {
+  const regenerationNote = isRegeneration
+    ? `\n\n🔄 REGENERATION MODE - CRITICAL INSTRUCTIONS:
+- This is a REGENERATION request (Seed: ${seed})
+- You MUST generate COMPLETELY DIFFERENT questions from any previous generation
+- Use ENTIRELY NEW Filipino words and phrases to translate
+- DO NOT repeat any questions or similar translations from before
+- Create fresh, unique content with different vocabulary
+- Vary the word categories and contexts significantly\n`
+    : '';
 
+  return `You are a translation quiz creator for EngliQuest. Generate EXACTLY 15 Filipino to English translation questions.
+${regenerationNote}
 CRITICAL JSON REQUIREMENTS:
 - Return ONLY a valid JSON array
 - NO markdown, NO code blocks, NO extra text
@@ -254,9 +284,19 @@ IMPORTANT: Start your response with [ and end with ]. No text before or after.
 Generate 15 questions now:`;
 }
 
-function sentenceConstructionPrompt(level: CEFRLevel, interests: string[], gameMode: string, difficulty: string): string {
-  return `You are a sentence construction quiz creator for EngliQuest. Generate EXACTLY 15 questions.
+function sentenceConstructionPrompt(level: CEFRLevel, interests: string[], gameMode: string, difficulty: string, isRegeneration?: boolean, seed?: string): string {
+  const regenerationNote = isRegeneration
+    ? `\n\n🔄 REGENERATION MODE - CRITICAL INSTRUCTIONS:
+- This is a REGENERATION request (Seed: ${seed})
+- You MUST generate COMPLETELY DIFFERENT questions from any previous generation
+- Use ENTIRELY NEW word combinations and sentence structures
+- DO NOT repeat any questions or similar patterns from before
+- Create fresh, unique content with different topics and word sets
+- Vary the complexity and themes significantly\n`
+    : '';
 
+  return `You are a sentence construction quiz creator for EngliQuest. Generate EXACTLY 15 questions.
+${regenerationNote}
 CRITICAL JSON REQUIREMENTS:
 - Return ONLY a valid JSON array
 - NO markdown, NO code blocks, NO extra text
@@ -289,9 +329,19 @@ IMPORTANT: Start your response with [ and end with ]. No text before or after.
 Generate 15 questions now:`;
 }
 
-function readingComprehensionPrompt(level: CEFRLevel, interests: string[], gameMode: string, difficulty: string): string {
-  return `You are a reading comprehension quiz creator for EngliQuest. Generate EXACTLY 15 questions.
+function readingComprehensionPrompt(level: CEFRLevel, interests: string[], gameMode: string, difficulty: string, isRegeneration?: boolean, seed?: string): string {
+  const regenerationNote = isRegeneration
+    ? `\n\n🔄 REGENERATION MODE - CRITICAL INSTRUCTIONS:
+- This is a REGENERATION request (Seed: ${seed})
+- You MUST generate COMPLETELY DIFFERENT questions from any previous generation
+- Use ENTIRELY NEW passages with different characters, stories, and scenarios
+- DO NOT repeat any questions, passages, or similar storylines from before
+- Create fresh, unique content with different plots and themes
+- Vary the reading topics and comprehension questions significantly\n`
+    : '';
 
+  return `You are a reading comprehension quiz creator for EngliQuest. Generate EXACTLY 15 questions.
+${regenerationNote}
 CRITICAL JSON REQUIREMENTS:
 - Return ONLY a valid JSON array
 - NO markdown, NO code blocks, NO extra text, NO explanations before or after
@@ -348,39 +398,41 @@ async function generateQuiz(
   interests: string[],
   gameMode: string,
   difficulty: string,
-  promptBuilder: (level: CEFRLevel, interests: string[], gameMode: string, difficulty: string) => string
+  promptBuilder: (level: CEFRLevel, interests: string[], gameMode: string, difficulty: string, isRegeneration?: boolean, seed?: string) => string,
+  isRegeneration: boolean = false
 ): Promise<Question[]> {
-  const prompt = promptBuilder(level, interests, gameMode, difficulty);
+  const seed = Date.now().toString() + Math.random().toString(36).substring(7);
+  const prompt = promptBuilder(level, interests, gameMode, difficulty, isRegeneration, seed);
   const model = getOptimizedModel();
 
   return withRetry(async () => {
     const result = await model.generateContent(prompt);
     const rawText = result.response.text();
     const questions = validateAndFormatQuestions(rawText);
-    
+
     if (questions.length !== 15) {
       console.warn(`Expected 15 questions, got ${questions.length}. Retrying...`);
       throw new Error(`Invalid question count: ${questions.length}`);
     }
-    
+
     return questions;
   }, 3, 1000);
 }
 
-export function generateVocabulary(level: CEFRLevel, interests: string[], difficulty: string) {
-  return generateQuiz(level, interests, "Vocabulary", difficulty, vocabularyPrompt);
+export function generateVocabulary(level: CEFRLevel, interests: string[], difficulty: string, isRegeneration: boolean = false) {
+  return generateQuiz(level, interests, "Vocabulary", difficulty, vocabularyPrompt, isRegeneration);
 }
-export function generateGrammar(level: CEFRLevel, interests: string[], difficulty: string) {
-  return generateQuiz(level, interests, "Grammar", difficulty, grammarPrompt);
+export function generateGrammar(level: CEFRLevel, interests: string[], difficulty: string, isRegeneration: boolean = false) {
+  return generateQuiz(level, interests, "Grammar", difficulty, grammarPrompt, isRegeneration);
 }
-export function generateTranslation(level: CEFRLevel, interests: string[], difficulty: string) {
-  return generateQuiz(level, interests, "Translation", difficulty, translationPrompt);
+export function generateTranslation(level: CEFRLevel, interests: string[], difficulty: string, isRegeneration: boolean = false) {
+  return generateQuiz(level, interests, "Translation", difficulty, translationPrompt, isRegeneration);
 }
-export function generateSentence(level: CEFRLevel, interests: string[], difficulty: string) {
-  return generateQuiz(level, interests, "Sentence Construction", difficulty, sentenceConstructionPrompt);
+export function generateSentence(level: CEFRLevel, interests: string[], difficulty: string, isRegeneration: boolean = false) {
+  return generateQuiz(level, interests, "Sentence Construction", difficulty, sentenceConstructionPrompt, isRegeneration);
 }
-export function generateReading(level: CEFRLevel, interests: string[], difficulty: string) {
-  return generateQuiz(level, interests, "Reading Comprehension", difficulty, readingComprehensionPrompt);
+export function generateReading(level: CEFRLevel, interests: string[], difficulty: string, isRegeneration: boolean = false) {
+  return generateQuiz(level, interests, "Reading Comprehension", difficulty, readingComprehensionPrompt, isRegeneration);
 }
 
 export async function runWithConcurrencyLimit<T>(
@@ -421,20 +473,21 @@ export async function createPersonalizedQuizClient(
   level: CEFRLevel,
   interests: string[],
   gameMode: string,
-  difficulty: string
+  difficulty: string,
+  isRegeneration: boolean = false
 ): Promise<{ quizId: string; questions: Question[] }> {
   let questions: Question[];
 
   if (gameMode === "Vocabulary") {
-    questions = await generateVocabulary(level, interests, difficulty);
+    questions = await generateVocabulary(level, interests, difficulty, isRegeneration);
   } else if (gameMode === "Grammar") {
-    questions = await generateGrammar(level, interests, difficulty);
+    questions = await generateGrammar(level, interests, difficulty, isRegeneration);
   } else if (gameMode === "Translation") {
-    questions = await generateTranslation(level, interests, difficulty);
+    questions = await generateTranslation(level, interests, difficulty, isRegeneration);
   } else if (gameMode === "Sentence Construction") {
-    questions = await generateSentence(level, interests, difficulty);
+    questions = await generateSentence(level, interests, difficulty, isRegeneration);
   } else if (gameMode === "Reading Comprehension") {
-    questions = await generateReading(level, interests, difficulty);
+    questions = await generateReading(level, interests, difficulty, isRegeneration);
   } else {
     throw new Error(`Unsupported game mode: ${gameMode}`);
   }
