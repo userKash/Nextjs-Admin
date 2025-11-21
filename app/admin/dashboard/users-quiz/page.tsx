@@ -994,7 +994,6 @@ function QuizSetDetailModal({
                     <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
                       <p className="text-sm font-semibold text-blue-900 mb-1">Explanation</p>
                       <p className="text-gray-900 text-sm leading-relaxed">{question.explanation}</p>
-                      <p className="text-gray-900 text-sm leading-relaxed">{question.clue}</p>
                     </div>
                   )}
 
