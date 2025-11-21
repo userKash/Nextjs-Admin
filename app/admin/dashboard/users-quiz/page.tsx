@@ -136,7 +136,7 @@ const [confirmAction, setConfirmAction] = useState<() => void>(() => {});
     return enhanceUserWithQuizData(selectedUser, generation, selectedUserQuizSets);
   }, [selectedUser, generations, selectedUserQuizSets]);
 
-  // Check if all quizzes are approved (30/30) and show notification
+  // Check if all quizzes are approved 
   useEffect(() => {
     if (updatedSelectedUser && updatedSelectedUser.approved === 30 && updatedSelectedUser.total === 30) {
       setShowAllApprovedNotification(true);
@@ -205,8 +205,6 @@ const handleApproveQuizSet = async () => {
   );
 };
 
-
-
 const handleRegenerateQuizSet = async () => {
   if (!selectedQuizSet) return;
 
@@ -236,8 +234,6 @@ const handleRegenerateQuizSet = async () => {
     }
   );
 };
-
-
 
 const handleApproveAllPending = (userId: string) => {
   const pendingCount = organizedQuizSets.filter(
@@ -269,9 +265,6 @@ const handleApproveAllPending = (userId: string) => {
     }
   );
 };
-
-
-
 
 const handleApproveLevelQuizzes = async (userId: string, level: CEFRLevel) => {
   const levelGroup = levelGroups.find(g => g.level === level);
@@ -312,43 +305,66 @@ const handleApproveLevelQuizzes = async (userId: string, level: CEFRLevel) => {
   );
 };
 
+  const handleTriggerGeneration = async (userId: string) => {
+    askConfirm(
+      "Generate 30 quiz sets for this user? This will take 1-2 minutes and you must keep this browser tab open during the process.",
+      async () => {
+      },
+      {
+        title: "Generate Quizzes",
+        confirmLabel: "Start Generation",
+        cancelLabel: "Cancel",
+      }
+    );
 
-
-const handleTriggerGeneration = async (userId: string) => {
-  askConfirm(
-    "Trigger quiz generation for this user? This will create 30 quiz sets and may take 1–2 minutes.",
-    async () => {
+    // Override the confirmAction to handle the actual generation
+    setConfirmAction(() => async () => {
       try {
         setActionLoading(true);
+
+        // Close the confirmation modal 
+        setConfirmOpen(false);
+
+        // Wait for modal to close
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        // Call the generation function
         const result = await triggerQuizGeneration(userId);
 
+        // Update modal state for result modal
+        setConfirmTitle(result.success ? "✓ Generation Completed" : "✗ Generation Failed");
         setConfirmMessage(
           result.success
-            ? "Quiz generation triggered successfully!"
-            : `Error: ${result.error}`
+            ? "Quiz generation has completed successfully!\n\nAll 30 quiz sets have been generated and are ready for review in the user details."
+            : `Failed to start generation: ${result.error}`
         );
+        setConfirmMode("result");
+        setConfirmLabel("Got it!");
+        setCancelLabel("");
+        setConfirmOpen(true); 
 
-        return result.success;
       } catch (error) {
-        setConfirmMessage(
-          `Error: ${error instanceof Error ? error.message : 'An unexpected error occurred'}`
-        );
-        return false;
+        // Set error modal state
+        setConfirmTitle("✗ Error");
+        setConfirmMessage(`Error: ${error instanceof Error ? error.message : 'An unexpected error occurred'}`);
+        setConfirmMode("result");
+        setConfirmLabel("OK");
+        setCancelLabel("");
+
+        // Open the error modal
+        setConfirmOpen(true);
       } finally {
         setActionLoading(false);
       }
-    }
-  );
-};
-
-
+    });
+  };
 
   const getStatusBadge = (user: EnhancedUser) => {
-    if (user.status === 'no-generation' || user.generationStatus?.status === 'pending') {
+    if (user.status === 'no-generation' || user.generationStatus?.status === 'pending' || user.generationStatus?.status === 'in_progress') {
       return (
         <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium bg-orange-100 text-orange-700">
           <Clock className="w-4 h-4" />
-          {user.status === 'no-generation' ? 'No Generation' : 'Generation Pending'}
+          {user.status === 'no-generation' ? 'No Generation' : 'Generating'}
         </span>
       );
     }
@@ -381,12 +397,12 @@ const handleTriggerGeneration = async (userId: string) => {
 
   // Helper to show quiz progress in table
   const getQuizProgressDisplay = (user: EnhancedUser) => {
-    if (user.generationStatus?.status === 'pending') {
+    if (user.generationStatus?.status === 'pending' || user.generationStatus?.status === 'in_progress') {
       return (
         <div className="flex items-center gap-2">
           <Loader2 className="w-4 h-4 text-orange-600 animate-spin" />
-          <span className="text-sm text-orange-600">
-            {user.generationStatus.progress || 0}/{user.generationStatus.total || 30}
+          <span className="text-sm font-semibold text-orange-600">
+            Generating: {user.generationStatus.progress || 0}/{user.generationStatus.total || 30} quizzes
           </span>
         </div>
       );
@@ -501,8 +517,8 @@ const handleTriggerGeneration = async (userId: string) => {
                     <td className="py-4 px-6 text-gray-600">{formatDate(user.createdAt)}</td>
                     <td className="py-4 px-6">
                       <div className="flex gap-2">
-                        {user.status === 'no-generation' && user.generationStatus?.status !== 'pending' ? (
-                          <button 
+                        {user.status === 'no-generation' && user.generationStatus?.status !== 'pending' && user.generationStatus?.status !== 'in_progress' ? (
+                          <button
                             onClick={() => handleTriggerGeneration(user.id)}
                             disabled={actionLoading}
                             className="inline-flex items-center justify-center gap-2 min-w\[160px] px-4 py-2.5 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
@@ -511,7 +527,7 @@ const handleTriggerGeneration = async (userId: string) => {
                             Generate Quizzes
                           </button>
                         ) : (
-                          <button 
+                          <button
                             onClick={() => handleViewUser(user)}
                             className="inline-flex items-center justify-center gap-2 min-w\[160px] px-4 py-2.5 bg-[#5E67CC] text-white rounded-lg font-medium hover:bg-[#4A52A3] transition"
                           >
@@ -569,11 +585,15 @@ const handleTriggerGeneration = async (userId: string) => {
   confirmLabel={confirmLabel}
   cancelLabel={cancelLabel}
   onConfirm={async () => {
-    const result = await confirmAction();
-    setConfirmMode("result");
-    setConfirmLabel("OK");
-    setCancelLabel("");
-    return result; 
+    // If in result mode, just close the modal
+    if (confirmMode === "result") {
+      setConfirmOpen(false);
+      return true;
+    }
+
+    // Execute the action (this may update confirmMode to "result")
+    await confirmAction();
+    return true;
   }}
   onCancel={() => {
     setConfirmOpen(false);
@@ -654,23 +674,26 @@ function UserDetailModal({
           )}
 
           {/* Generation Status */}
-          {user.generationStatus?.status === 'pending' && (
+          {(user.generationStatus?.status === 'pending' || user.generationStatus?.status === 'in_progress') && (
             <div className="mt-6 p-4 bg-orange-50 rounded-lg border border-orange-200">
               <div className="flex items-center gap-3">
                 <Loader2 className="w-5 h-5 text-orange-600 animate-spin" />
                 <div className="flex-1">
                   <p className="font-semibold text-orange-900">Quiz Generation in Progress</p>
                   <p className="text-sm text-orange-700 mt-1">
-                    Progress: {user.generationStatus.progress || 0}/{user.generationStatus.total || 30} quiz sets generated
+                    <span className="font-bold text-lg">{user.generationStatus.progress || 0}/{user.generationStatus.total || 30}</span> quiz sets generated
                   </p>
                 </div>
               </div>
-              <div className="w-full bg-orange-200 rounded-full h-2.5 mt-3">
-                <div 
-                  className="bg-orange-600 h-2.5 rounded-full transition-all"
+              <div className="w-full bg-orange-200 rounded-full h-3 mt-3">
+                <div
+                  className="bg-orange-600 h-3 rounded-full transition-all duration-500"
                   style={{ width: `${((user.generationStatus.progress || 0) / (user.generationStatus.total || 30)) * 100}%` }}
                 ></div>
               </div>
+              <p className="text-xs text-orange-600 mt-2 text-center font-medium">
+                {Math.round(((user.generationStatus.progress || 0) / (user.generationStatus.total || 30)) * 100)}% Complete
+              </p>
             </div>
           )}
 
