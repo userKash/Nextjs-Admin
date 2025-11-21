@@ -171,6 +171,14 @@ Vocabulary Focus:
 - All sentences and words should be appropriate for ${level} level learners
 - Each question connects to user interests with varied scenarios
 
+CRITICAL: CLUE VS EXPLANATION REQUIREMENTS
+- The "clue" is a hint shown BEFORE the learner answers (to help them think)
+- The "explanation" is shown AFTER answering (to teach why the answer is correct)
+- NEVER repeat the clue content in the explanation
+- The explanation should provide additional educational value beyond the hint
+- BAD: clue="Look for result", explanation="Look for a word showing result" (repetitive!)
+- GOOD: clue="Look for result", explanation="'So' indicates consequence and shows what happened because she was tired"
+
 Example format (follow EXACTLY):
 [
   {
@@ -178,7 +186,7 @@ Example format (follow EXACTLY):
     "options": ["but", "so", "because", "and"],
     "correctIndex": 1,
     "clue": "Look for a word that shows result or consequence.",
-    "explanation": "The word 'so' shows the result of being tired."
+    "explanation": "'So' is a conjunction that indicates a result or consequence. Here, going to bed early is the result of being tired."
   }
 ]
 
@@ -216,6 +224,14 @@ Grammar Focus:
 - Learners should practice identifying and correcting errors
 - Each question must tie back to the learner's interests when possible, using different scenarios
 
+CRITICAL: CLUE VS EXPLANATION REQUIREMENTS
+- The "clue" is a hint shown BEFORE the learner answers (to help them think)
+- The "explanation" is shown AFTER answering (to teach why the answer is correct)
+- NEVER repeat the clue content in the explanation
+- The explanation should provide additional educational value beyond the hint
+- BAD: clue="Think about past tense", explanation="Use past tense form" (repetitive!)
+- GOOD: clue="Think about past tense", explanation="'Went' is the simple past form of 'go', used with 'yesterday' to indicate a completed action"
+
 Example format (follow EXACTLY):
 [
   {
@@ -223,7 +239,7 @@ Example format (follow EXACTLY):
     "options": ["go", "goes", "went", "gone"],
     "correctIndex": 2,
     "clue": "Think about the past tense form of the verb.",
-    "explanation": "The past tense of 'go' is 'went'."
+    "explanation": "'Went' is the simple past tense of 'go'. We use it with time markers like 'yesterday' to describe completed actions in the past."
   }
 ]
 
@@ -255,6 +271,9 @@ Target: ${level} (${getLevelGuidelines(level)}) | Difficulty: ${difficulty}
 Interests: ${interests.join(", ")}
 
 Translation Focus:
+- CRITICAL TRANSLATION DIRECTION: Filipino → English ONLY (NOT English → Filipino)
+- The question MUST present a FILIPINO word or phrase to be translated INTO ENGLISH
+- NEVER ask to translate an English word into Filipino
 - Learners must translate Filipino words or short phrases into English
 - Activities: Word or short-phrase translation (input-based recall)
 - Encourage bilingual development by reinforcing both Filipino and English
@@ -269,6 +288,20 @@ CRITICAL: AVOID SYNONYM ANSWERS
 - Wrong answers should be completely unrelated words from different categories
 - This ensures only ONE correct answer without confusion
 
+QUESTION FORMAT REQUIREMENTS:
+- ALWAYS use this EXACT format: "Translate to English: '[Filipino word/phrase]'"
+- The Filipino word/phrase MUST be inside single quotes
+- Use proper capitalization: "English" (not "english")
+- NEVER reverse the direction (e.g., "Translate into Filipino: 'run'" is WRONG)
+
+CRITICAL: CLUE VS EXPLANATION REQUIREMENTS
+- The "clue" is a hint shown BEFORE the learner answers (to help them think)
+- The "explanation" is shown AFTER answering (to teach why the answer is correct)
+- NEVER repeat the clue content in the explanation
+- The explanation should provide additional educational value beyond the hint
+- BAD: clue="This is a pet that barks", explanation="This is a pet that barks" (repetitive!)
+- GOOD: clue="This is a common pet that barks", explanation="'Aso' is the Filipino word for 'Dog', a domesticated animal known for barking and loyalty"
+
 Example format (follow EXACTLY):
 [
   {
@@ -276,7 +309,21 @@ Example format (follow EXACTLY):
     "options": ["Cat", "Dog", "Bird", "Fish"],
     "correctIndex": 1,
     "clue": "This is a common pet that barks.",
-    "explanation": "'Aso' means 'Dog' in English."
+    "explanation": "'Aso' is the Filipino word for 'Dog', a domesticated animal often kept as a pet and companion."
+  },
+  {
+    "question": "Translate to English: 'Bahay'",
+    "options": ["School", "House", "Park", "Store"],
+    "correctIndex": 1,
+    "clue": "This is where people live.",
+    "explanation": "'Bahay' means 'House' in English. It refers to a building where people reside or make their home."
+  },
+  {
+    "question": "Translate to English: 'Tubig'",
+    "options": ["Food", "Air", "Water", "Fire"],
+    "correctIndex": 2,
+    "clue": "This is a liquid you drink.",
+    "explanation": "'Tubig' translates to 'Water' in English. It is an essential liquid necessary for human survival and hydration."
   }
 ]
 
@@ -314,14 +361,44 @@ Sentence Construction Focus:
 - This helps learners improve syntax, word order, and logical flow of English grammar
 - Each question must tie back to the learner's interests when possible, using different scenarios
 
+CRITICAL: ENSURE ONLY ONE CORRECT ANSWER
+- Design word sets so that ONLY ONE grammatically correct sentence can be formed
+- AVOID ambiguous word sets where multiple valid arrangements exist
+- BAD example: ['a', 'wizard', 'cast', 'a', 'powerful', 'spell'] - Can make "A powerful wizard cast a spell" OR "A wizard cast a powerful spell" (both correct!)
+- GOOD example: ['the', 'dog', 'brown', 'big', 'ran'] - Only "The big brown dog ran" is correct (adjective order matters)
+- Test your word set: if you can rearrange it into 2+ grammatically correct sentences with different meanings, REJECT it
+- Use articles (the/a), prepositions, and word order rules that enforce ONE specific arrangement
+- Wrong answer options should be clearly incorrect (wrong word order, grammar errors, nonsensical)
+
+ADDITIONAL GUIDELINES:
+- Avoid duplicate articles (like two 'a's) that could modify different nouns
+- Use specific determiners like 'the' instead of multiple indefinite articles
+- Include prepositional phrases or specific verb forms that lock word positions
+- Make sure adjectives have clear noun targets and can't be moved around
+
+CRITICAL: CLUE VS EXPLANATION REQUIREMENTS
+- The "clue" is a hint shown BEFORE the learner answers (to help them think)
+- The "explanation" is shown AFTER answering (to teach why the answer is correct)
+- NEVER repeat the clue content in the explanation
+- The explanation should provide additional educational value beyond the hint
+- BAD: clue="Subject first, verb second", explanation="Put subject first and verb second" (repetitive!)
+- GOOD: clue="Subject comes first, then verb", explanation="In English, sentences follow SVO (Subject-Verb-Object) order. 'The cat' is the subject performing the action"
+
 Example format (follow EXACTLY):
 [
   {
     "question": "Rearrange the words: ['the', 'dog', 'brown', 'big', 'ran']",
     "options": ["The dog brown big ran.", "Big brown the dog ran.", "The big brown dog ran.", "Dog ran the big brown."],
     "correctIndex": 2,
-    "clue": "Remember: adjectives come before the noun they describe.",
-    "explanation": "The correct sentence is 'The big brown dog ran.' because adjectives should precede the noun in proper order."
+    "clue": "Adjectives go before the noun in a specific order: size before color.",
+    "explanation": "In English, multiple adjectives follow a specific order: opinion, size, age, shape, color. Here, 'big' (size) comes before 'brown' (color), both before the noun 'dog'."
+  },
+  {
+    "question": "Rearrange the words: ['quickly', 'the', 'runs', 'cat', 'very']",
+    "options": ["The cat runs very quickly.", "Very quickly the cat runs.", "The runs cat very quickly.", "Quickly very the cat runs."],
+    "correctIndex": 0,
+    "clue": "The subject comes first, then the verb, then adverbs.",
+    "explanation": "English follows Subject-Verb-Object word order. 'Very' is an adverb modifying 'quickly', and adverb phrases typically come after the verb they modify."
   }
 ]
 
@@ -361,6 +438,14 @@ Reading Comprehension Focus:
 - Questions should check understanding of main idea, details, inference, and "what happens next"
 - Questions must tie back to the learner's interests when possible, using different stories and characters
 
+CRITICAL: CLUE VS EXPLANATION REQUIREMENTS
+- The "clue" is a hint shown BEFORE the learner answers (to help them think)
+- The "explanation" is shown AFTER answering (to teach why the answer is correct)
+- NEVER repeat the clue content in the explanation
+- The explanation should provide additional educational value beyond the hint
+- BAD: clue="Check what Anna does", explanation="Check what Anna does in the passage" (repetitive!)
+- GOOD: clue="Check what Anna does in the afternoon", explanation="The second sentence states 'She practices every afternoon after school,' which refers to basketball practice"
+
 Example format (follow EXACTLY):
 [
   {
@@ -369,7 +454,7 @@ Example format (follow EXACTLY):
     "options": ["Studies math", "Plays basketball", "Goes shopping", "Cooks dinner"],
     "correctIndex": 1,
     "clue": "Check what the passage says Anna does in the afternoon.",
-    "explanation": "The passage says Anna practices basketball after school."
+    "explanation": "The passage explicitly states 'She practices every afternoon after school.' The word 'She' refers to Anna, and her practice is for basketball, as mentioned in the first sentence."
   }
 ]
 
