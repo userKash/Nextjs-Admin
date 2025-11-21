@@ -13,12 +13,12 @@ export interface UserData {
 export interface QuizGeneration {
   userId: string;
   interests: string[];
-  status: 'pending' | 'completed' | 'failed';
-  progress?: number; 
-  total?: number;  
+  status: 'pending' | 'in_progress' | 'completed' | 'failed';
+  progress?: number;
+  total?: number;
   createdAt: any;
   updatedAt: any;
-  completedAt?: any; 
+  completedAt?: any;
   error?: string;
 }
 
