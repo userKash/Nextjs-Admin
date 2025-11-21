@@ -50,7 +50,7 @@ const QUIZ_PLAN = [
   { level: "C2", difficulty: "hard", gameMode: "Reading Comprehension" },
 ];
 
-const BATCH_SIZE = 3; // Generate 3 quizzes per request to stay under 10s timeout
+const BATCH_SIZE = 5; // Generate 5 quizzes per request
 
 export async function POST(request: NextRequest) {
   try {
