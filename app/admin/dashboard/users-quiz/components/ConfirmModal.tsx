@@ -95,11 +95,11 @@ export default function ConfirmModal({
             )}
           </div>
           <h2 className="text-xl font-semibold text-gray-900">
-            {isResult ? "Success" : title}
+            {title}
           </h2>
-          <p className="mt-3 text-sm text-gray-600 px-3">{message}</p>
+          <p className="mt-3 text-sm text-gray-600 px-3 whitespace-pre-line">{message}</p>
           <div className="mt-6 flex gap-3 justify-center">
-            {!isResult && (
+            {!isResult && cancelLabel && (
               <button
                 onClick={onCancel}
                 className="px-4 py-2 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200"
@@ -111,7 +111,7 @@ export default function ConfirmModal({
               onClick={isResult ? onCancel : onConfirm}
               className="px-4 py-2 rounded-lg bg-[#5E67CC] text-white font-semibold hover:bg-[#5255b8]"
             >
-              {isResult ? "OK" : confirmLabel}
+              {confirmLabel}
             </button>
           </div>
         </div>
