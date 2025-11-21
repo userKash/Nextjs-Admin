@@ -188,7 +188,12 @@ const handleApproveQuizSet = async () => {
             setConfirmOpen(false);
             if (result.success) setSelectedQuizSet(null);
           },
-          { mode: "result", confirmLabel: "OK", cancelLabel: "" }
+          {
+            title: result.success ? "Success" : "Error",
+            mode: "result",
+            confirmLabel: "OK",
+            cancelLabel: ""
+          }
         );
       } catch (error) {
         askConfirm(
@@ -196,7 +201,12 @@ const handleApproveQuizSet = async () => {
           () => {
             setConfirmOpen(false);
           },
-          { mode: "result", confirmLabel: "OK", cancelLabel: "" }
+          {
+            title: "Error",
+            mode: "result",
+            confirmLabel: "OK",
+            cancelLabel: ""
+          }
         );
       } finally {
         setActionLoading(false);
@@ -211,23 +221,40 @@ const handleRegenerateQuizSet = async () => {
   askConfirm(
     `Regenerate Quiz Set #${selectedQuizSet.setNumber}? This will overwrite existing questions.`,
     async () => {
+      setConfirmOpen(false);
+
       try {
         setActionLoading(true);
         const result = await regenerateQuizSet(selectedQuizSet.id);
 
-        // Update modal result message
-        setConfirmMessage(
+        askConfirm(
           result.success
             ? `Quiz Set #${selectedQuizSet.setNumber} regenerated successfully!`
-            : `Error: ${result.error}`
+            : `Error: ${result.error}`,
+          () => {
+            setConfirmOpen(false);
+            if (result.success) setSelectedQuizSet(null);
+          },
+          {
+            title: result.success ? "Success" : "Error",
+            mode: "result",
+            confirmLabel: "OK",
+            cancelLabel: ""
+          }
         );
-
-        return result.success; // triggers success mode in modal
       } catch (error) {
-        setConfirmMessage(
-          `Error: ${error instanceof Error ? error.message : 'An unexpected error occurred'}`
+        askConfirm(
+          `Error: ${error instanceof Error ? error.message : 'An unexpected error occurred'}`,
+          () => {
+            setConfirmOpen(false);
+          },
+          {
+            title: "Error",
+            mode: "result",
+            confirmLabel: "OK",
+            cancelLabel: ""
+          }
         );
-        return false;
       } finally {
         setActionLoading(false);
       }
