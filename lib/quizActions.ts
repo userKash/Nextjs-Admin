@@ -211,11 +211,6 @@ async function processBatches(userId: string): Promise<void> {
 
     completed = result.completed;
     batchIndex = result.batchIndex;
-
-    // Add a small delay between batches to avoid rate limits
-    if (!completed) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
   }
 
   console.log('All batches completed successfully');
