@@ -136,7 +136,7 @@ const [confirmAction, setConfirmAction] = useState<() => void>(() => {});
     return enhanceUserWithQuizData(selectedUser, generation, selectedUserQuizSets);
   }, [selectedUser, generations, selectedUserQuizSets]);
 
-  // Check if all quizzes are approved 
+  // Check if all quizzes are approved
   useEffect(() => {
     if (updatedSelectedUser && updatedSelectedUser.approved === 30 && updatedSelectedUser.total === 30) {
       setShowAllApprovedNotification(true);
@@ -144,6 +144,16 @@ const [confirmAction, setConfirmAction] = useState<() => void>(() => {});
       return () => clearTimeout(timer);
     }
   }, [updatedSelectedUser]);
+
+  // Sync selectedQuizSet with latest data from organizedQuizSets (for regeneration updates)
+  useEffect(() => {
+    if (selectedQuizSet) {
+      const updatedQuizSet = organizedQuizSets.find(q => q.id === selectedQuizSet.id);
+      if (updatedQuizSet && JSON.stringify(updatedQuizSet) !== JSON.stringify(selectedQuizSet)) {
+        setSelectedQuizSet(updatedQuizSet);
+      }
+    }
+  }, [organizedQuizSets, selectedQuizSet]);
 
   const handleViewUser = (user: EnhancedUser) => {
     setSelectedUser(user);
