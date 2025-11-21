@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getFirestore } from 'firebase-admin/firestore';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { generateAllQuizzes } from '@/lib/geminiService';
 
 // Initialize Firebase Admin SDK
 if (!getApps().length) {
@@ -52,7 +51,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`User interests: ${interests.join(', ')}`);
 
-    // Update quiz_generations document to pending using Admin SDK
+    // Initialize quiz_generations document
     const generationRef = adminDb.collection('quiz_generations').doc(userId);
     await generationRef.set({
       userId,
@@ -60,18 +59,17 @@ export async function POST(request: NextRequest) {
       status: 'pending',
       progress: 0,
       total: 30,
+      currentBatch: 0,
       createdAt: new Date(),
       updatedAt: new Date(),
     }, { merge: true });
 
-    console.log('Quiz generation document created, starting background process...');
-
-    // Start quiz generation in background (don't await)
-    generateQuizzesInBackground(userId, interests);
+    console.log('Quiz generation initialized. Use batch API to generate quizzes.');
 
     return NextResponse.json({
       success: true,
-      message: 'Quiz generation started. This will take 5-10 minutes.',
+      message: 'Quiz generation initialized. Client will process in batches.',
+      useBatchAPI: true, // Signal to client to use batch processing
     });
 
   } catch (error: any) {
@@ -83,80 +81,41 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function generateQuizzesInBackground(
-  userId: string,
-  interests: string[]
-) {
-  const generationRef = adminDb.collection('quiz_generations').doc(userId);
-  
+// Get generation status
+export async function GET(request: NextRequest) {
   try {
-    console.log(`Starting quiz generation for user ${userId} with interests:`, interests);
-    
-    // Generate all 30 quizzes with progress tracking
-    const quizResults = await generateAllQuizzes(
-      userId,
-      interests,
-      async (completed: number, total: number) => {
-        // Update progress in real-time using Admin SDK
-        console.log(`Progress: ${completed}/${total} quizzes generated`);
-        await generationRef.update({
-          progress: completed,
-          total: total,
-          updatedAt: new Date(),
-        });
-      }
-    );
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get('userId');
 
-    console.log(`Generated ${quizResults.length} quizzes, now saving to Firestore...`);
-
-    // Save all quiz sets to Firestore using Admin SDK
-    const batch = adminDb.batch();
-    
-    quizResults.forEach((quiz) => {
-      const quizId = `${userId}_${quiz.metadata.level}_${quiz.metadata.gameMode.replace(/\s+/g, '')}_${quiz.metadata.difficulty}`;
-      const quizRef = adminDb.collection('quizzes').doc(quizId);
-
-      batch.set(quizRef, {
-        userId,
-        level: quiz.metadata.level,
-        gameMode: quiz.metadata.gameMode,
-        difficulty: quiz.metadata.difficulty,
-        interests,
-        questions: quiz.questions,
-        status: 'pending',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-
-      console.log(`Queued quiz for save: ${quizId}`);
-    });
-
-    // Commit all quizzes at once
-    await batch.commit();
-    console.log('All quizzes saved successfully');
-
-    // Mark generation as completed
-    await generationRef.update({
-      status: 'completed',
-      progress: 30,
-      total: 30,
-      completedAt: new Date(),
-      updatedAt: new Date(),
-    });
-
-    console.log(`Successfully generated and saved 30 quiz sets for user ${userId}`);
-  } catch (error: any) {
-    console.error('Error in background quiz generation:', error);
-
-    // Mark generation as failed
-    try {
-      await generationRef.update({
-        status: 'failed',
-        error: error.message,
-        updatedAt: new Date(),
-      });
-    } catch (updateError) {
-      console.error('Error updating generation status to failed:', updateError);
+    if (!userId) {
+      return NextResponse.json(
+        { success: false, error: 'User ID is required' },
+        { status: 400 }
+      );
     }
+
+    const generationRef = adminDb.collection('quiz_generations').doc(userId);
+    const generationDoc = await generationRef.get();
+
+    if (!generationDoc.exists) {
+      return NextResponse.json(
+        { success: false, error: 'No generation found for this user' },
+        { status: 404 }
+      );
+    }
+
+    const data = generationDoc.data();
+
+    return NextResponse.json({
+      success: true,
+      ...data,
+    });
+
+  } catch (error: any) {
+    console.error('Error fetching generation status:', error);
+    return NextResponse.json(
+      { success: false, error: error.message || 'Internal server error' },
+      { status: 500 }
+    );
   }
 }

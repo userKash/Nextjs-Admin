@@ -110,7 +110,7 @@ export async function regenerateQuizSet(quizSetId: string) {
   }
 }
 
-// Trigger quiz generation for a user
+// Trigger quiz generation for a user with batch processing
 export async function triggerQuizGeneration(userId: string) {
   try {
     // Check if user already has quiz_generations document
@@ -119,11 +119,11 @@ export async function triggerQuizGeneration(userId: string) {
 
     // Get user interests
     let interests: string[] = [];
-    
+
     // Try to get from users collection first
     const userRef = doc(db, 'users', userId);
     const userSnap = await getDoc(userRef);
-    
+
     if (userSnap.exists()) {
       interests = userSnap.data().interests || [];
     } else if (genSnap.exists()) {
@@ -135,17 +135,20 @@ export async function triggerQuizGeneration(userId: string) {
       throw new Error('User has no interests selected');
     }
 
-    // Create or update quiz_generations document to set initial pending status
+    // Initialize quiz_generations document
     await setDoc(generationRef, {
       userId,
       interests,
       status: 'pending',
+      progress: 0,
+      total: 30,
+      currentBatch: 0,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     }, { merge: true });
 
-    // Call the API to generate quizzes
-    const response = await fetch('/api/gemini', {
+    // Initialize generation
+    const initResponse = await fetch('/api/gemini', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -153,13 +156,16 @@ export async function triggerQuizGeneration(userId: string) {
       body: JSON.stringify({ userId }),
     });
 
-    const result = await response.json();
+    const initResult = await initResponse.json();
 
-    if (!response.ok || !result.success) {
-      throw new Error(result.error || 'Failed to generate quizzes');
+    if (!initResponse.ok || !initResult.success) {
+      throw new Error(initResult.error || 'Failed to initialize quiz generation');
     }
 
-    return { success: true, message: result.message };
+    // Start batch processing
+    await processBatches(userId);
+
+    return { success: true, message: 'Quiz generation completed successfully' };
   } catch (error: any) {
     console.error('Error triggering quiz generation:', error);
 
@@ -177,4 +183,40 @@ export async function triggerQuizGeneration(userId: string) {
 
     return { success: false, error: error.message };
   }
+}
+
+// Process quiz generation in batches to avoid Vercel timeout
+async function processBatches(userId: string): Promise<void> {
+  let batchIndex = 0;
+  let completed = false;
+
+  while (!completed) {
+    console.log(`Processing batch ${batchIndex}...`);
+
+    const response = await fetch('/api/gemini/batch', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ userId, batchIndex }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      throw new Error(result.error || `Failed to process batch ${batchIndex}`);
+    }
+
+    console.log(`Batch ${batchIndex} completed: ${result.progress}/${result.total}`);
+
+    completed = result.completed;
+    batchIndex = result.batchIndex;
+
+    // Add a small delay between batches to avoid rate limits
+    if (!completed) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+
+  console.log('All batches completed successfully');
 }
