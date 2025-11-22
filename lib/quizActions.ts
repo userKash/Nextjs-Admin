@@ -20,20 +20,36 @@ export async function approveQuizSet(quizSetId: string) {
 // Approve all pending quiz sets for a user
 export async function approveAllPendingQuizSets(userId: string) {
   try {
+    // Get all quizzes for the user
     const q = query(
       collection(db, 'quizzes'),
-      where('userId', '==', userId),
-      where('status', '==', 'pending')
+      where('userId', '==', userId)
     );
-    
+
     const snapshot = await getDocs(q);
-    
-    if (snapshot.empty) {
+
+    // Filter to only pending or missing status (not approved or regenerating)
+    const pendingDocs = snapshot.docs.filter(doc => {
+      const data = doc.data();
+      const status = data.status;
+
+      // Exclude malformed/orphaned quiz documents (those without gameMode, level, or difficulty)
+      if (!data.gameMode || !data.level || !data.difficulty) {
+        console.warn('Skipping malformed quiz document:', doc.id);
+        return false;
+      }
+
+      // Only approve if status is explicitly 'pending' or missing/undefined
+      // Exclude 'approved' and 'regenerating' statuses
+      return status === 'pending' || status === undefined || status === null || status === '';
+    });
+
+    if (pendingDocs.length === 0) {
       return { success: true, message: 'No pending quiz sets found', approved: 0 };
     }
 
     const batch = writeBatch(db);
-    snapshot.docs.forEach((docSnap) => {
+    pendingDocs.forEach((docSnap) => {
       batch.update(docSnap.ref, {
         status: 'approved',
         approvedAt: serverTimestamp(),
@@ -41,8 +57,8 @@ export async function approveAllPendingQuizSets(userId: string) {
     });
 
     await batch.commit();
-    
-    return { success: true, approved: snapshot.size };
+
+    return { success: true, approved: pendingDocs.length };
   } catch (error: any) {
     console.error('Error approving all quiz sets:', error);
     return { success: false, error: error.message };
