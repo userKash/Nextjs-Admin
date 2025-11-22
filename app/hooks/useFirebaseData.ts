@@ -200,6 +200,12 @@ export function useAllUserQuizCounts() {
 
           if (!userId) return;
 
+          // Skip malformed/orphaned quiz documents (those without gameMode, level, or difficulty)
+          if (!data.gameMode || !data.level || !data.difficulty) {
+            console.warn('Skipping malformed quiz in counts:', doc.id);
+            return;
+          }
+
           if (!countsData[userId]) {
             countsData[userId] = {
               total: 0,
@@ -256,11 +262,21 @@ export function useUserQuizSets(userId: string | null) {
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        const quizSetsData = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as QuizSet[];
-        
+        const quizSetsData = snapshot.docs
+          .filter((doc) => {
+            const data = doc.data();
+            // Skip malformed/orphaned quiz documents
+            if (!data.gameMode || !data.level || !data.difficulty) {
+              console.warn('Skipping malformed quiz in user quiz sets:', doc.id);
+              return false;
+            }
+            return true;
+          })
+          .map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          })) as QuizSet[];
+
         // Sort by createdAt if available
         quizSetsData.sort((a, b) => {
           if (a.createdAt && b.createdAt) {
@@ -270,7 +286,7 @@ export function useUserQuizSets(userId: string | null) {
           }
           return 0;
         });
-        
+
         setQuizSets(quizSetsData);
         setLoading(false);
       },
