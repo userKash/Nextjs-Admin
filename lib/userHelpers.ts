@@ -113,8 +113,8 @@ export function enhanceUserWithQuizData(
 
   // Count approved and pending quiz sets
   const approved = quizSets.filter(set => set.status === 'approved').length;
+  const pending = quizSets.filter(set => set.status === 'pending' || !set.status).length;
   const total = quizSets.length;
-  const pending = total - approved;
 
   let status: 'approved' | 'pending' | 'partial';
   
