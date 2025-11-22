@@ -280,22 +280,39 @@ const handleApproveAllPending = (userId: string) => {
   askConfirm(
     `Approve all ${pendingCount} pending quiz sets for this user?`,
     async () => {
+      setConfirmOpen(false);
+
       try {
         setActionLoading(true);
         const result = await approveAllPendingQuizSets(userId);
 
-        setConfirmMessage(
+        askConfirm(
           result.success
-            ? `All pending quiz sets approved! (${result.approved || pendingCount})`
-            : `Error: ${result.error}`
+            ? `All pending quiz sets approved! (${result.approved})`
+            : `Error: ${result.error}`,
+          () => {
+            setConfirmOpen(false);
+          },
+          {
+            title: result.success ? "Success" : "Error",
+            mode: "result",
+            confirmLabel: "OK",
+            cancelLabel: ""
+          }
         );
-
-        return result.success;
       } catch (error) {
-        setConfirmMessage(
-          `Error: ${error instanceof Error ? error.message : 'An unexpected error occurred'}`
+        askConfirm(
+          `Error: ${error instanceof Error ? error.message : 'An unexpected error occurred'}`,
+          () => {
+            setConfirmOpen(false);
+          },
+          {
+            title: "Error",
+            mode: "result",
+            confirmLabel: "OK",
+            cancelLabel: ""
+          }
         );
-        return false;
       } finally {
         setActionLoading(false);
       }
@@ -314,6 +331,8 @@ const handleApproveLevelQuizzes = async (userId: string, level: CEFRLevel) => {
   askConfirm(
     `Approve all ${levelGroup.pending} pending quiz sets for ${level}?`,
     async () => {
+      setConfirmOpen(false);
+
       try {
         setActionLoading(true);
 
@@ -323,18 +342,33 @@ const handleApproveLevelQuizzes = async (userId: string, level: CEFRLevel) => {
 
         const successCount = results.filter(r => r.success).length;
 
-        setConfirmMessage(
+        askConfirm(
           successCount === pendingQuizzes.length
             ? `All ${level} quiz sets approved successfully!`
-            : `Approved ${successCount} of ${pendingQuizzes.length}.`
+            : `Approved ${successCount} of ${pendingQuizzes.length}.`,
+          () => {
+            setConfirmOpen(false);
+          },
+          {
+            title: successCount === pendingQuizzes.length ? "Success" : "Partial Success",
+            mode: "result",
+            confirmLabel: "OK",
+            cancelLabel: ""
+          }
         );
-
-        return successCount === pendingQuizzes.length;
       } catch (error) {
-        setConfirmMessage(
-          `Error: ${error instanceof Error ? error.message : 'An unexpected error occurred'}`
+        askConfirm(
+          `Error: ${error instanceof Error ? error.message : 'An unexpected error occurred'}`,
+          () => {
+            setConfirmOpen(false);
+          },
+          {
+            title: "Error",
+            mode: "result",
+            confirmLabel: "OK",
+            cancelLabel: ""
+          }
         );
-        return false;
       } finally {
         setActionLoading(false);
       }
