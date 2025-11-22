@@ -106,14 +106,6 @@ export default function LoginPage() {
                          focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all"
                 required
               />
-              <div className="flex justify-end mt-1">
-                <Link
-                  href="/forgot-password"
-                  className="text-sm text-gray-500 hover:text-indigo-600 transition-colors"
-                >
-                  Forgot password?
-                </Link>
-              </div>
             </div>
 
             {/* Error Message */}
