@@ -8,6 +8,9 @@ import { approveQuizSet, approveAllPendingQuizSets, regenerateQuizSet, triggerQu
 import { useUsers, useQuizGenerations, useUserQuizSets, useAllUserQuizCounts, type QuizSet } from '@/app/hooks/useFirebaseData';
 import { enhanceUserWithQuizCounts, enhanceUserWithQuizData, formatDate, organizeQuizSets, getQuizSetNumber, type EnhancedUser } from '@/lib/userHelpers';
 import ConfirmModal from "./components/ConfirmModal";
+import { getDocs, collection, DocumentData, QueryDocumentSnapshot, updateDoc, serverTimestamp, doc } from "firebase/firestore";
+import { db } from "@/service/firebase"; // ensure your Firebase instance is imported
+
 
 
 type CEFRLevel = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
@@ -19,6 +22,29 @@ interface LevelGroup {
   approved: number;
   total: number;
 }
+
+interface ReQuestRequest {
+  id: string;
+  userId: string;
+  userName?: string; 
+  userEmail?: string;
+  newInterests?: string[];
+  requestStatus: string;
+  createdAt?: any;
+}
+
+
+async function finalizeUserGeneration(userId: string) {
+  await updateDoc(doc(db, "users", userId), {
+    regenerationInProgress: false,
+  });
+
+  await updateDoc(doc(db, "quiz_generations", userId), {
+    status: "completed",
+    completedAt: serverTimestamp()
+  });
+}
+
 
 export default function UsersManagementPage() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -45,6 +71,29 @@ const [confirmLabel, setConfirmLabel] = useState<string>("Confirm");
 const [cancelLabel, setCancelLabel] = useState<string>("Cancel");
 const [confirmAction, setConfirmAction] = useState<() => void>(() => {});
 
+
+const [reQuestRequests, setReQuestRequests] = useState<ReQuestRequest[]>([]);
+
+useEffect(() => {
+  async function loadReQuestRequests() {
+    try {
+      const snapshot = await getDocs(collection(db, "RequestQUEST"));
+      const requests: ReQuestRequest[] = snapshot.docs.map(
+        (d: QueryDocumentSnapshot<DocumentData>) => ({
+          id: d.id,
+          ...d.data(),
+        } as ReQuestRequest)
+      );
+      setReQuestRequests(requests);
+    } catch (error) {
+      console.error("Error loading Re-Quest requests:", error);
+    }
+  }
+
+  loadReQuestRequests();
+}, []);
+
+
   const askConfirm = (
     message: string,
     onConfirm: () => void,
@@ -68,13 +117,48 @@ const [confirmAction, setConfirmAction] = useState<() => void>(() => {});
     setConfirmAction(() => onConfirm);
     setConfirmOpen(true);
   };
-  const enhancedUsers = useMemo(() => {
-    return users.map(user => {
-      const generation = generations[user.id];
-      const userCounts = counts[user.id]; 
-      return enhanceUserWithQuizCounts(user, generation, userCounts); 
-    });
-  }, [users, generations, counts]);
+
+
+// Merge normal users with applied Re-Quest modifications
+const enhancedUsers = useMemo(() => {
+  //Build normal enhanced users
+  const normalUsers = users.map(user => {
+    const generation = generations[user.id];
+    const userCounts = counts[user.id];
+    return enhanceUserWithQuizCounts(user, generation, userCounts);
+  });
+
+normalUsers.forEach(user => {
+  const pendingRequest = reQuestRequests.find(
+    r => r.userId === user.id && r.requestStatus === "pending"
+  );
+
+  if (!pendingRequest) return;
+
+  // Apply modified interests only
+  user.interests = pendingRequest.newInterests || user.interests;
+
+  // If user has NO active generation -> show "no-generation"
+  if (!user.generationStatus) {
+    user.status = "no-generation";
+  }
+
+  // If generation exists and is pending -> show correct pending status
+  if (user.generationStatus?.status === "pending") {
+    user.status = "pending";  
+  }
+  if (!user.generationStatus || user.generationStatus.status === "pending") {
+    user.approved = 0;
+    user.total = 0;
+    user.quizSets = 0;
+    user.pending = 0;
+  }
+});
+
+  return normalUsers;
+}, [users, generations, counts, reQuestRequests]);
+
+
 
   const filteredUsers = useMemo(() => {
     return enhancedUsers
@@ -180,6 +264,11 @@ const handleApproveQuizSet = async () => {
         setActionLoading(true);
         const result = await approveQuizSet(selectedQuizSet.id);
 
+        // ✅ NEW: finalize if approved
+        if (result.success && selectedUser?.id) {
+          await finalizeUserGeneration(selectedUser.id);
+        }
+
         askConfirm(
           result.success
             ? `Quiz Set #${selectedQuizSet.setNumber} approved successfully!`
@@ -204,6 +293,8 @@ const handleApproveQuizSet = async () => {
     }
   );
 };
+
+
 
 
 
@@ -251,6 +342,11 @@ const handleApproveAllPending = (userId: string) => {
         setActionLoading(true);
         const result = await approveAllPendingQuizSets(userId);
 
+        // ✅ NEW: finalize when all pending are approved
+        if (result.success) {
+          await finalizeUserGeneration(userId);
+        }
+
         setConfirmMessage(
           result.success
             ? `All pending quiz sets approved! (${result.approved || pendingCount})`
@@ -271,8 +367,6 @@ const handleApproveAllPending = (userId: string) => {
 };
 
 
-
-
 const handleApproveLevelQuizzes = async (userId: string, level: CEFRLevel) => {
   const levelGroup = levelGroups.find(g => g.level === level);
   if (!levelGroup || levelGroup.pending === 0) return;
@@ -286,12 +380,13 @@ const handleApproveLevelQuizzes = async (userId: string, level: CEFRLevel) => {
     async () => {
       try {
         setActionLoading(true);
-
         const results = await Promise.all(
           pendingQuizzes.map(q => approveQuizSet(q.id))
         );
-
         const successCount = results.filter(r => r.success).length;
+        if (successCount === pendingQuizzes.length) {
+          await finalizeUserGeneration(userId);
+        }
 
         setConfirmMessage(
           successCount === pendingQuizzes.length
@@ -314,12 +409,15 @@ const handleApproveLevelQuizzes = async (userId: string, level: CEFRLevel) => {
 
 
 
+
 const handleTriggerGeneration = async (userId: string) => {
   askConfirm(
     "Trigger quiz generation for this user? This will create 30 quiz sets and may take 1–2 minutes.",
     async () => {
       try {
         setActionLoading(true);
+
+        // 🔥 Trigger fresh generation
         const result = await triggerQuizGeneration(userId);
 
         setConfirmMessage(
@@ -340,6 +438,7 @@ const handleTriggerGeneration = async (userId: string) => {
     }
   );
 };
+
 
 
 

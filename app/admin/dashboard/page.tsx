@@ -75,6 +75,14 @@ interface InterestStat {
   color: string;
 }
 
+interface ReQuestRequest {
+  id: string;
+  userId: string;
+  requestStatus: string;
+  createdAt?: Timestamp;
+}
+
+
 export default function DashboardAnalytics() {
   const [stats, setStats] = useState<{
     totalUsers: number;
@@ -106,6 +114,24 @@ export default function DashboardAnalytics() {
       const now = Date.now();
       const thirtyDaysAgo = now - (30 * 86400000);
       const sixtyDaysAgo = now - (60 * 86400000);
+
+      //NEW RE QUEST FEAURE
+      const reQuestSnap = await getDocs(collection(db, "RequestQUEST"));
+      const RequestQUEST: ReQuestRequest[] = reQuestSnap.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
+      } as ReQuestRequest));
+
+      // Convert Re-Quest requests into activity items for admin dashboard
+    const reQuestActivity: ActivityItem[] = RequestQUEST.map((req) => ({
+      id: req.id,
+      user: req.userId,
+      action: "Requested New Quiz Set",
+      type: "reQuest",
+      status: req.requestStatus,
+      time: req.createdAt?.toDate()?.toLocaleString(),
+    }));
+
 
       const newUsers = users.filter((u) => {
         const created = u.createdAt?.toDate?.();
@@ -154,7 +180,10 @@ export default function DashboardAnalytics() {
         ...d.data(),
       }));
 
-      const pendingApproval = quizzes.filter((q) => q.status === "pending").length;
+      const pendingApproval = 
+      quizzes.filter((q) => q.status === "pending").length +
+      RequestQUEST.filter((r) => r.requestStatus === "pending").length;
+
       const approvedQuizzes = quizzes.filter((q) => q.status === "approved").length;
 
       // Count all active quiz sets (all game modes across all levels)
@@ -221,7 +250,12 @@ export default function DashboardAnalytics() {
         status: q.status,
       }));
 
-      const combined = [...gens, ...quizActivity].slice(0, 12);
+      const combined = [
+    ...reQuestActivity,  // NEW
+    ...gens,
+    ...quizActivity
+  ].slice(0, 12);
+
 
       setStats({
         totalUsers: users.length,
