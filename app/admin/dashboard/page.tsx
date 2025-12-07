@@ -239,21 +239,29 @@ export default function DashboardAnalytics() {
         query(collection(db, "quiz_generations"), orderBy("updatedAt", "desc"))
       );
 
-      const gens: ActivityItem[] = genSnap.docs.map((d) => ({
-        id: d.id,
-        action: `${d.data().total} quizzes generated`,
-        type: "generation",
-        time: d.data().updatedAt?.toDate()?.toLocaleString(),
-      }));
+      const gens: ActivityItem[] = genSnap.docs.map((d) => {
+        const genUserId = d.data().userId;
+        const user = users.find(u => u.id === genUserId);
+        return {
+          id: d.id,
+          user: user?.name || genUserId,
+          action: `${d.data().total} quizzes generated`,
+          type: "generation",
+          time: d.data().updatedAt?.toDate()?.toLocaleString(),
+        };
+      });
 
-      const quizActivity: ActivityItem[] = quizzes.slice(0, 15).map((q) => ({
-        id: q.id,
-        user: q.userId,
-        action: `${q.status === "approved" ? "Approved" : "Updated"} Quiz Set`,
-        type: q.status === "approved" ? "approval" : "update",
-        time: q.updatedAt?.toDate()?.toLocaleString(),
-        status: q.status,
-      }));
+      const quizActivity: ActivityItem[] = quizzes.slice(0, 15).map((q) => {
+        const user = users.find(u => u.id === q.userId);
+        return {
+          id: q.id,
+          user: user?.name || q.userId,
+          action: `${q.status === "approved" ? "Approved" : "Updated"} Quiz Set`,
+          type: q.status === "approved" ? "approval" : "update",
+          time: q.updatedAt?.toDate()?.toLocaleString(),
+          status: q.status,
+        };
+      });
 
       const combined = [
     ...reQuestActivity,  // NEW
