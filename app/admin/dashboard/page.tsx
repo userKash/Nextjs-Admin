@@ -32,6 +32,8 @@ const COLORS = [
 
 interface UserData {
   id: string;
+  name?: string;
+  email?: string;
   createdAt?: Timestamp;
   interests?: string[];
 }
@@ -123,14 +125,17 @@ export default function DashboardAnalytics() {
       } as ReQuestRequest));
 
       // Convert Re-Quest requests into activity items for admin dashboard
-    const reQuestActivity: ActivityItem[] = RequestQUEST.map((req) => ({
-      id: req.id,
-      user: req.userId,
-      action: "Requested New Quiz Set",
-      type: "reQuest",
-      status: req.requestStatus,
-      time: req.createdAt?.toDate()?.toLocaleString(),
-    }));
+    const reQuestActivity: ActivityItem[] = RequestQUEST.map((req) => {
+      const user = users.find(u => u.id === req.userId);
+      return {
+        id: req.id,
+        user: user?.name || req.userId,
+        action: "Requested New Quiz Set",
+        type: "reQuest",
+        status: req.requestStatus,
+        time: req.createdAt?.toDate()?.toLocaleString(),
+      };
+    });
 
 
       const newUsers = users.filter((u) => {
