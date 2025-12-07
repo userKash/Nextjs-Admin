@@ -3,7 +3,6 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "@/service/firebase";
@@ -102,18 +101,10 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter your password"
-                className="h-12 rounded-lg border-gray-300 px-4 placeholder:text-gray-400 
+                className="h-12 rounded-lg border-gray-300 px-4 placeholder:text-gray-400
                          focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all"
                 required
               />
-              <div className="flex justify-end mt-1">
-                <Link
-                  href="/forgot-password"
-                  className="text-sm text-gray-500 hover:text-indigo-600 transition-colors"
-                >
-                  Forgot password?
-                </Link>
-              </div>
             </div>
 
             {/* Error Message */}
@@ -141,17 +132,6 @@ export default function LoginPage() {
               )}
             </Button>
           </form>
-
-          {/* Footer */}
-          <p className="text-sm text-gray-500 text-center pt-4">
-            Don&apos;t have an account?{" "}
-            <Link
-              href="/register"
-              className="text-indigo-600 font-semibold hover:text-indigo-700 transition-colors"
-            >
-              Sign up
-            </Link>
-          </p>
         </div>
       </section>
     </main>
