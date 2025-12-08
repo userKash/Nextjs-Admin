@@ -3,6 +3,9 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { generateAllQuizzes } from '@/lib/geminiService';
 
+// Set max duration for quiz generation (60 seconds for Vercel)
+export const maxDuration = 60;
+
 // Initialize Firebase Admin SDK
 if (!getApps().length) {
   initializeApp({
@@ -64,14 +67,15 @@ export async function POST(request: NextRequest) {
       updatedAt: new Date(),
     }, { merge: true });
 
-    console.log('Quiz generation document created, starting background process...');
+    console.log('Quiz generation document created, starting generation process...');
 
-    // Start quiz generation in background (don't await)
-    generateQuizzesInBackground(userId, interests);
+    // IMPORTANT: We must await the generation, otherwise serverless functions
+    // will terminate the background process when the response is returned
+    await generateQuizzesInBackground(userId, interests);
 
     return NextResponse.json({
       success: true,
-      message: 'Quiz generation started. This will take 5-10 minutes.',
+      message: 'Quiz generation completed successfully!',
     });
 
   } catch (error: any) {
