@@ -178,3 +178,75 @@ export async function triggerQuizGeneration(userId: string) {
     return { success: false, error: error.message };
   }
 }
+
+// Delete user and all associated data
+export async function deleteUser(userId: string) {
+  try {
+    // 1. Delete all quizzes associated with the user
+    const quizzesQuery = query(
+      collection(db, 'quizzes'),
+      where('userId', '==', userId)
+    );
+    const quizzesSnapshot = await getDocs(quizzesQuery);
+
+    const batch = writeBatch(db);
+
+    quizzesSnapshot.docs.forEach((docSnap) => {
+      batch.delete(doc(db, 'quizzes', docSnap.id));
+    });
+
+    // 2. Delete quiz_generations document
+    const generationRef = doc(db, 'quiz_generations', userId);
+    const generationSnap = await getDoc(generationRef);
+    if (generationSnap.exists()) {
+      batch.delete(generationRef);
+    }
+
+    // 3. Delete user document from users collection
+    const userRef = doc(db, 'users', userId);
+    const userSnap = await getDoc(userRef);
+    if (userSnap.exists()) {
+      batch.delete(userRef);
+    }
+
+    // 4. Delete any RequestQUEST documents for this user
+    const requestQuery = query(
+      collection(db, 'RequestQUEST'),
+      where('userId', '==', userId)
+    );
+    const requestSnapshot = await getDocs(requestQuery);
+    requestSnapshot.docs.forEach((docSnap) => {
+      batch.delete(doc(db, 'RequestQUEST', docSnap.id));
+    });
+
+    // Commit all deletions
+    await batch.commit();
+
+    // 5. Delete from Firebase Auth (requires calling an API endpoint)
+    const response = await fetch('/api/users/delete', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ userId }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      console.error('Failed to delete user from Auth:', result.error);
+      return {
+        success: false,
+        error: result.error || 'Failed to delete user from authentication'
+      };
+    }
+
+    return {
+      success: true,
+      message: `Successfully deleted user and ${quizzesSnapshot.docs.length} associated quizzes`
+    };
+  } catch (error: any) {
+    console.error('Error deleting user:', error);
+    return { success: false, error: error.message };
+  }
+}
