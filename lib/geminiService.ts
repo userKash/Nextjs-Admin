@@ -407,10 +407,7 @@ export async function runWithConcurrencyLimit<T>(
       }
       onProgress?.(completed, tasks.length);
     });
-    
-    if (i + limit < tasks.length) {
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
+
   }
   
   return results;
@@ -497,5 +494,6 @@ export async function generateAllQuizzes(
     }
   );
 
-  return runWithConcurrencyLimit(tasks, 5, onProgress);
+  // Increase concurrency from 5 to 10 for faster generation
+  return runWithConcurrencyLimit(tasks, 10, onProgress);
 }
