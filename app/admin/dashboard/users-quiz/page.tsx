@@ -3,8 +3,8 @@
 "use client"
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Search, ChevronRight, ChevronDown, X, AlertTriangle, RefreshCw, CheckCircle, Clock, Loader2, PlayCircle, Sparkles } from 'lucide-react';
-import { approveQuizSet, approveAllPendingQuizSets, regenerateQuizSet, triggerQuizGeneration } from '@/lib/quizActions';
+import { Search, ChevronRight, ChevronDown, X, AlertTriangle, RefreshCw, CheckCircle, Clock, Loader2, PlayCircle, Sparkles, Trash2 } from 'lucide-react';
+import { approveQuizSet, approveAllPendingQuizSets, regenerateQuizSet, triggerQuizGeneration, deleteUser } from '@/lib/quizActions';
 import { useUsers, useQuizGenerations, useUserQuizSets, useAllUserQuizCounts, type QuizSet } from '@/app/hooks/useFirebaseData';
 import { enhanceUserWithQuizCounts, enhanceUserWithQuizData, formatDate, organizeQuizSets, getQuizSetNumber, type EnhancedUser } from '@/lib/userHelpers';
 import ConfirmModal from "./components/ConfirmModal";
@@ -439,7 +439,43 @@ const handleTriggerGeneration = async (userId: string) => {
   );
 };
 
+const handleDeleteUser = (userId: string, userName: string) => {
+  askConfirm(
+    `Are you sure you want to delete ${userName}? This will permanently delete:\n\n• User account from authentication\n• All quiz sets (${enhancedUsers.find(u => u.id === userId)?.total || 0} quizzes)\n• All quiz generation data\n• All Re-Quest requests\n\nThis action cannot be undone.`,
+    async () => {
+      try {
+        setActionLoading(true);
 
+        const result = await deleteUser(userId);
+
+        setConfirmMessage(
+          result.success
+            ? result.message || "User deleted successfully!"
+            : `Error: ${result.error}`
+        );
+
+        // Close the user detail panel if it's open
+        if (selectedUser?.id === userId) {
+          setSelectedUser(null);
+        }
+
+        return result.success;
+      } catch (error) {
+        setConfirmMessage(
+          `Error: ${error instanceof Error ? error.message : 'An unexpected error occurred'}`
+        );
+        return false;
+      } finally {
+        setActionLoading(false);
+      }
+    },
+    {
+      title: "Delete User",
+      confirmLabel: "Delete User",
+      cancelLabel: "Cancel",
+    }
+  );
+};
 
 
   const getStatusBadge = (user: EnhancedUser) => {
@@ -601,7 +637,7 @@ const handleTriggerGeneration = async (userId: string) => {
                     <td className="py-4 px-6">
                       <div className="flex gap-2">
                         {user.status === 'no-generation' && user.generationStatus?.status !== 'pending' ? (
-                          <button 
+                          <button
                             onClick={() => handleTriggerGeneration(user.id)}
                             disabled={actionLoading}
                             className="inline-flex items-center justify-center gap-2 min-w\[160px] px-4 py-2.5 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
@@ -610,7 +646,7 @@ const handleTriggerGeneration = async (userId: string) => {
                             Generate Quizzes
                           </button>
                         ) : (
-                          <button 
+                          <button
                             onClick={() => handleViewUser(user)}
                             className="inline-flex items-center justify-center gap-2 min-w\[160px] px-4 py-2.5 bg-[#5E67CC] text-white rounded-lg font-medium hover:bg-[#4A52A3] transition"
                           >
@@ -618,6 +654,14 @@ const handleTriggerGeneration = async (userId: string) => {
                             <ChevronRight className="w-4 h-4" />
                           </button>
                         )}
+                        <button
+                          onClick={() => handleDeleteUser(user.id, user.name)}
+                          disabled={actionLoading}
+                          className="inline-flex items-center justify-center p-2.5 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Delete user"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     </td>
                   </tr>
