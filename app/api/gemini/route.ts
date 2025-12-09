@@ -4,7 +4,7 @@ import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { generateAllQuizzes } from '@/lib/geminiService';
 
 // Set max duration for quiz generation (60 seconds for Vercel)
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 // Initialize Firebase Admin SDK
 if (!getApps().length) {
