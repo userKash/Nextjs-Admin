@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY!;
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
@@ -14,109 +14,8 @@ export interface Question {
 
 export type CEFRLevel = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
 
-async function withRetry<T>(
-  fn: () => Promise<T>,
-  maxRetries: number = 3,
-  baseDelay: number = 1000
-): Promise<T> {
-  let lastError: Error;
-  
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (error) {
-      lastError = error as Error;
-      
-      if (attempt === maxRetries) {
-        throw lastError;
-      }
-      
-      const delay = baseDelay * Math.pow(2, attempt);
-      console.log(`Attempt ${attempt + 1} failed, retrying in ${delay}ms...`);
-      await new Promise(resolve => setTimeout(resolve, delay));
-    }
-  }
-  
-  throw lastError!;
-}
-
-function cleanJSONResponse(raw: string): string {
-  return raw.replace(/```(?:json)?\s*([\s\S]*?)\s*```/g, "$1").trim();
-}
-
-function sanitizeJSON(raw: string): string {
-  let fixed = cleanJSONResponse(raw);
-  fixed = fixed.replace(/\]\s*\[/g, ",");
-  fixed = fixed.replace(/,\s*([}\]])/g, "$1");
-  fixed = fixed.replace(/[""]/g, '"').replace(/['']/g, "'");
-  return fixed;
-}
-
 function capitalizeFirstLetter(text: string): string {
   return text ? text.charAt(0).toUpperCase() + text.slice(1) : text;
-}
-
-function extractQuestions(parsed: any): Question[] {
-  if (Array.isArray(parsed)) return parsed;
-  if (parsed?.quiz && Array.isArray(parsed.quiz)) return parsed.quiz;
-  if (parsed?.questions && Array.isArray(parsed.questions)) return parsed.questions;
-  return [];
-}
-
-function validateAndFormatQuestions(raw: string): Question[] {
-  const cleaned = sanitizeJSON(raw);
-  let parsed: any;
-
-  try {
-    parsed = JSON.parse(cleaned);
-  } catch (err) {
-    console.error("JSON parse failed. Raw Gemini output:", cleaned);
-
-    const matches = cleaned.match(/\[[\s\S]*\]/);
-    if (matches) {
-      try {
-        const recovered = matches[0].replace(/,\s*([}\]])/g, "$1");
-        parsed = JSON.parse(recovered);
-      } catch (err2) {
-        throw new Error("Gemini returned unrecoverable JSON");
-      }
-    } else {
-      throw new Error("Gemini returned invalid JSON");
-    }
-  }
-
-  const questions = extractQuestions(parsed);
-
-  if (!Array.isArray(questions)) {
-    console.error("Gemini response is not an array:", parsed);
-    throw new Error("Invalid quiz format from Gemini API");
-  }
-
-  return questions.map((q, idx) => {
-    const normalizedQuestion = Array.isArray(q.question)
-      ? q.question.join(" ")
-      : q.question;
-
-    if (
-      typeof normalizedQuestion !== "string" ||
-      !Array.isArray(q.options) ||
-      q.options.length !== 4 ||
-      typeof q.correctIndex !== "number" ||
-      typeof q.explanation !== "string" ||
-      typeof q.clue !== "string"
-    ) {
-      console.error(`Invalid format at question #${idx + 1}:`, q);
-      throw new Error("Invalid question format from Gemini API");
-    }
-
-    return {
-      ...q,
-      question: capitalizeFirstLetter(normalizedQuestion),
-      options: q.options.map((opt: string) => capitalizeFirstLetter(opt)),
-      explanation: capitalizeFirstLetter(q.explanation),
-      clue: capitalizeFirstLetter(q.clue),
-    };
-  });
 }
 
 function getLevelDescription(level: CEFRLevel): string {
@@ -141,206 +40,257 @@ function getLevelGuidelines(level: CEFRLevel): string {
   }
 }
 
-function vocabularyPrompt(level: CEFRLevel, interests: string[], gameMode: string, difficulty: string): string {
-  return `You are a quiz creator for EngliQuest. Generate EXACTLY 15 vocabulary questions.
+// Define JSON schemas for different question types
+const baseQuestionSchema = {
+  type: SchemaType.OBJECT as const,
+  properties: {
+    question: { type: SchemaType.STRING as const },
+    options: { 
+      type: SchemaType.ARRAY as const,
+      items: { type: SchemaType.STRING as const }
+    },
+    correctIndex: { type: SchemaType.INTEGER as const },
+    clue: { type: SchemaType.STRING as const },
+    explanation: { type: SchemaType.STRING as const }
+  },
+  required: ["question", "options", "correctIndex", "clue", "explanation"]
+};
 
-CRITICAL JSON REQUIREMENTS:
-- Return ONLY a valid JSON array
-- NO markdown, NO code blocks, NO extra text
-- Start with [ and end with ]
-- EXACTLY 15 questions
-- Each question MUST have: question, options (array of 4 strings), correctIndex (0-3), clue, explanation
+const readingQuestionSchema = {
+  type: SchemaType.OBJECT as const,
+  properties: {
+    passage: { type: SchemaType.STRING as const },
+    question: { type: SchemaType.STRING as const },
+    options: { 
+      type: SchemaType.ARRAY as const,
+      items: { type: SchemaType.STRING as const }
+    },
+    correctIndex: { type: SchemaType.INTEGER as const },
+    clue: { type: SchemaType.STRING as const },
+    explanation: { type: SchemaType.STRING as const }
+  },
+  required: ["passage", "question", "options", "correctIndex", "clue", "explanation"]
+};
+
+function getResponseSchema(includePassage: boolean = false) {
+  return {
+    type: SchemaType.OBJECT as const,
+    properties: {
+      questions: {
+        type: SchemaType.ARRAY as const,
+        items: includePassage ? readingQuestionSchema : baseQuestionSchema
+      }
+    },
+    required: ["questions"]
+  };
+}
+
+function getOptimizedModel(includePassage: boolean = false) {
+  return genAI.getGenerativeModel({ 
+    model: "gemini-2.0-flash-exp",
+    generationConfig: {
+      maxOutputTokens: 8000,
+      temperature: 1.0,
+      topP: 0.95,
+      responseMimeType: "application/json",
+      responseSchema: getResponseSchema(includePassage)
+    }
+  });
+}
+
+function validateAndFormatQuestions(parsed: any): Question[] {
+  // Extract questions array
+  const questions = parsed?.questions || [];
+
+  if (!Array.isArray(questions)) {
+    console.error("Response does not contain a questions array:", parsed);
+    return [];
+  }
+
+  const validQuestions: Question[] = [];
+
+  questions.forEach((q, idx) => {
+    // Validate question structure
+    if (
+      typeof q.question !== "string" ||
+      !Array.isArray(q.options) ||
+      q.options.length !== 4 ||
+      typeof q.correctIndex !== "number" ||
+      q.correctIndex < 0 ||
+      q.correctIndex > 3 ||
+      typeof q.explanation !== "string" ||
+      typeof q.clue !== "string"
+    ) {
+      console.warn(`⚠️ Skipping invalid question #${idx + 1}:`, {
+        hasQuestion: typeof q.question === "string",
+        hasOptions: Array.isArray(q.options),
+        optionsLength: q.options?.length,
+        validCorrectIndex: typeof q.correctIndex === "number" && q.correctIndex >= 0 && q.correctIndex <= 3,
+        hasExplanation: typeof q.explanation === "string",
+        hasClue: typeof q.clue === "string"
+      });
+      return;
+    }
+
+    // Add valid question with capitalization
+    validQuestions.push({
+      ...(q.passage && { passage: capitalizeFirstLetter(q.passage) }),
+      question: capitalizeFirstLetter(q.question),
+      options: q.options.map((opt: string) => capitalizeFirstLetter(opt)),
+      explanation: capitalizeFirstLetter(q.explanation),
+      clue: capitalizeFirstLetter(q.clue),
+      correctIndex: q.correctIndex
+    });
+  });
+
+  console.log(`✅ Validated ${validQuestions.length}/${questions.length} questions`);
+  return validQuestions;
+}
+
+function vocabularyPrompt(level: CEFRLevel, interests: string[], gameMode: string, difficulty: string, questionCount: number = 15): string {
+  return `Generate EXACTLY ${questionCount} vocabulary questions as a JSON object.
 
 Target: ${level} (${getLevelGuidelines(level)}) | Difficulty: ${difficulty}
 Interests: ${interests.join(", ")}
 
 Vocabulary Focus:
-- Vocabulary refers to a learner's understanding and correct use of words
-- Questions must test vocabulary in context, where learners choose the correct word to complete a sentence
-- Use context clues (e.g., contrast, definition, or example clues) to guide learners
-- All sentences and words should be appropriate for ${level} level learners
-- Each question connects to user interests with varied scenarios
+- Test vocabulary in context with fill-in-the-blank sentences
+- Use context clues (contrast, definition, example) appropriate for ${level} level
+- Connect questions to user interests with varied scenarios
+- All words should be appropriate for ${level} learners
 
-Example format (follow EXACTLY):
-[
-  {
-    "question": "She was tired, ___ she went to bed early.",
-    "options": ["but", "so", "because", "and"],
-    "correctIndex": 1,
-    "clue": "Look for a word that shows result or consequence.",
-    "explanation": "The word 'so' shows the result of being tired."
-  }
-]
-
-IMPORTANT: Start your response with [ and end with ]. No text before or after.
-Generate 15 questions now:`;
+Return format:
+{
+  "questions": [
+    {
+      "question": "She was tired, ___ she went to bed early.",
+      "options": ["but", "so", "because", "and"],
+      "correctIndex": 1,
+      "clue": "Look for a word that shows result or consequence.",
+      "explanation": "The word 'so' shows the result of being tired."
+    }
+  ]
 }
 
-function grammarPrompt(level: CEFRLevel, interests: string[], gameMode: string, difficulty: string): string {
-  return `You are a grammar quiz creator for EngliQuest. Generate EXACTLY 15 grammar questions.
+Generate ${questionCount} questions now.`;
+}
 
-CRITICAL JSON REQUIREMENTS:
-- Return ONLY a valid JSON array
-- NO markdown, NO code blocks, NO extra text
-- Start with [ and end with ]
-- EXACTLY 15 questions
-- Each question MUST have: question, options (array of 4 strings), correctIndex (0-3), clue, explanation
+function grammarPrompt(level: CEFRLevel, interests: string[], gameMode: string, difficulty: string, questionCount: number = 15): string {
+  return `Generate EXACTLY ${questionCount} grammar questions as a JSON object.
 
 Target: ${level} (${getLevelGuidelines(level)}) | Difficulty: ${difficulty}
 Interests: ${interests.join(", ")}
 
 Grammar Focus:
-- Grammar is the way words are put together to make correct sentences
-- Activities: Fill-in-the-blank and Error Spotting
-- Target common grammar issues like subject-verb agreement, tense usage, and misuse/omission of verbs
-- Learners should practice identifying and correcting errors
-- Each question must tie back to the learner's interests when possible, using different scenarios
+- Fill-in-the-blank and error spotting activities
+- Target subject-verb agreement, tense usage, verb forms
+- Connect to learner's interests using different scenarios
+- Appropriate for ${level} level learners
 
-Example format (follow EXACTLY):
-[
-  {
-    "question": "He ___ to the market yesterday.",
-    "options": ["go", "goes", "went", "gone"],
-    "correctIndex": 2,
-    "clue": "Think about the past tense form of the verb.",
-    "explanation": "The past tense of 'go' is 'went'."
-  }
-]
-
-IMPORTANT: Start your response with [ and end with ]. No text before or after.
-Generate 15 questions now:`;
+Return format:
+{
+  "questions": [
+    {
+      "question": "He ___ to the market yesterday.",
+      "options": ["go", "goes", "went", "gone"],
+      "correctIndex": 2,
+      "clue": "Think about the past tense form of the verb.",
+      "explanation": "The past tense of 'go' is 'went'."
+    }
+  ]
 }
 
-function translationPrompt(level: CEFRLevel, interests: string[], gameMode: string, difficulty: string): string {
-  return `You are a translation quiz creator for EngliQuest. Generate EXACTLY 15 Filipino to English translation questions.
+Generate ${questionCount} questions now.`;
+}
 
-CRITICAL JSON REQUIREMENTS:
-- Return ONLY a valid JSON array
-- NO markdown, NO code blocks, NO extra text
-- Start with [ and end with ]
-- EXACTLY 15 questions
-- Each question MUST have: question, options (array of 4 strings), correctIndex (0-3), clue, explanation
+function translationPrompt(level: CEFRLevel, interests: string[], gameMode: string, difficulty: string, questionCount: number = 15): string {
+  return `Generate EXACTLY ${questionCount} Filipino to English translation questions as a JSON object.
 
 Target: ${level} (${getLevelGuidelines(level)}) | Difficulty: ${difficulty}
 Interests: ${interests.join(", ")}
 
 Translation Focus:
-- Learners must translate Filipino words or short phrases into English
-- Activities: Word or short-phrase translation (input-based recall)
-- Encourage bilingual development by reinforcing both Filipino and English
-- Questions should connect to the learner's interests when possible
-- Keep translations age-appropriate and aligned with everyday vocabulary
+- Translate Filipino words or short phrases to English
+- Age-appropriate everyday vocabulary
+- Connect to learner's interests when possible
 
-CRITICAL: AVOID SYNONYM ANSWERS
-- Each option must be DISTINCTLY DIFFERENT from the others
-- DO NOT include synonyms or similar meanings in the options
-- BAD example: "Bato" with options ["Stone", "Rock", "Pebble", "Boulder"] - these are all synonyms!
-- GOOD example: "Bato" with options ["Tree", "Rock", "Water", "House"] - clearly different meanings
-- Wrong answers should be completely unrelated words from different categories
-- This ensures only ONE correct answer without confusion
+CRITICAL: Wrong answers must be COMPLETELY DIFFERENT from the correct answer
+- DO NOT use synonyms (e.g., Stone/Rock/Pebble are all wrong)
+- Use unrelated words from different categories
+- Example: "Bato" → ["Tree", "Rock", "Water", "House"] ✓ (clearly different)
 
-Example format (follow EXACTLY):
-[
-  {
-    "question": "Translate to English: 'Aso'",
-    "options": ["Cat", "Dog", "Bird", "Fish"],
-    "correctIndex": 1,
-    "clue": "This is a common pet that barks.",
-    "explanation": "'Aso' means 'Dog' in English."
-  }
-]
-
-IMPORTANT: Start your response with [ and end with ]. No text before or after.
-Generate 15 questions now:`;
+Return format:
+{
+  "questions": [
+    {
+      "question": "Translate to English: 'Aso'",
+      "options": ["Cat", "Dog", "Bird", "Fish"],
+      "correctIndex": 1,
+      "clue": "This is a common pet that barks.",
+      "explanation": "'Aso' means 'Dog' in English."
+    }
+  ]
 }
 
-function sentenceConstructionPrompt(level: CEFRLevel, interests: string[], gameMode: string, difficulty: string): string {
-  return `You are a sentence construction quiz creator for EngliQuest. Generate EXACTLY 15 questions.
+Generate ${questionCount} questions now.`;
+}
 
-CRITICAL JSON REQUIREMENTS:
-- Return ONLY a valid JSON array
-- NO markdown, NO code blocks, NO extra text
-- Start with [ and end with ]
-- EXACTLY 15 questions
-- Each question MUST have: question, options (array of 4 strings), correctIndex (0-3), clue, explanation
+function sentenceConstructionPrompt(level: CEFRLevel, interests: string[], gameMode: string, difficulty: string, questionCount: number = 15): string {
+  return `Generate EXACTLY ${questionCount} sentence construction questions as a JSON object.
 
 Target: ${level} (${getLevelGuidelines(level)}) | Difficulty: ${difficulty}
 Interests: ${interests.join(", ")}
 
 Sentence Construction Focus:
-- A sentence is a grammatically complete string of words expressing a complete thought
-- Learners often struggle with verb tenses, capitalization, and punctuation errors
-- Sentence Construction mode presents jumbled words that learners must rearrange into grammatically correct sentences
-- This helps learners improve syntax, word order, and logical flow of English grammar
-- Each question must tie back to the learner's interests when possible, using different scenarios
+- Present jumbled words that need rearranging
+- Test syntax, word order, and grammar flow
+- Connect to learner's interests using different scenarios
+- Appropriate for ${level} level learners
 
-Example format (follow EXACTLY):
-[
-  {
-    "question": "Rearrange the words: ['the', 'dog', 'brown', 'big', 'ran']",
-    "options": ["The dog brown big ran.", "Big brown the dog ran.", "The big brown dog ran.", "Dog ran the big brown."],
-    "correctIndex": 2,
-    "clue": "Remember: adjectives come before the noun they describe.",
-    "explanation": "The correct sentence is 'The big brown dog ran.' because adjectives should precede the noun in proper order."
-  }
-]
-
-IMPORTANT: Start your response with [ and end with ]. No text before or after.
-Generate 15 questions now:`;
+Return format:
+{
+  "questions": [
+    {
+      "question": "Rearrange these words to make a correct sentence: the dog brown big ran",
+      "options": ["The dog brown big ran.", "Big brown the dog ran.", "The big brown dog ran.", "Dog ran the big brown."],
+      "correctIndex": 2,
+      "clue": "Remember: adjectives come before the noun they describe.",
+      "explanation": "The correct sentence is 'The big brown dog ran.' because adjectives should precede the noun in proper order."
+    }
+  ]
 }
 
-function readingComprehensionPrompt(level: CEFRLevel, interests: string[], gameMode: string, difficulty: string): string {
-  return `You are a reading comprehension quiz creator for EngliQuest. Generate EXACTLY 15 questions.
+Generate ${questionCount} questions now.`;
+}
 
-CRITICAL JSON REQUIREMENTS:
-- Return ONLY a valid JSON array
-- NO markdown, NO code blocks, NO extra text, NO explanations before or after
-- Start your response with [ and end with ]
-- EXACTLY 15 questions
-- Each question MUST have ALL these fields: passage, question, options (array of 4 strings), correctIndex (0-3), clue, explanation
-- All text must be properly escaped (use \\n for line breaks if needed)
-- No trailing commas after last item
+function readingComprehensionPrompt(level: CEFRLevel, interests: string[], gameMode: string, difficulty: string, questionCount: number = 15): string {
+  return `Generate EXACTLY ${questionCount} reading comprehension questions as a JSON object.
 
 Target: ${level} (${getLevelGuidelines(level)}) | Difficulty: ${difficulty}
 Interests: ${interests.join(", ")}
 
 Reading Comprehension Focus:
-- Learners will read short passages tailored to their interests
-- Passages must be simple, age-appropriate, and engaging for ${level} level
-- Each passage should be 2-4 sentences long
-- Questions should check understanding of main idea, details, inference, and "what happens next"
-- Questions must tie back to the learner's interests when possible, using different stories and characters
+- Short passages (2-4 sentences) tailored to interests
+- Simple, age-appropriate, engaging for ${level} level
+- Test main idea, details, inference, predictions
+- Connect to learner's interests with varied stories
 
-Example format (follow EXACTLY):
-[
-  {
-    "passage": "Anna loves basketball. She practices every afternoon after school.",
-    "question": "What does Anna do after school?",
-    "options": ["Studies math", "Plays basketball", "Goes shopping", "Cooks dinner"],
-    "correctIndex": 1,
-    "clue": "Check what the passage says Anna does in the afternoon.",
-    "explanation": "The passage says Anna practices basketball after school."
-  }
-]
-
-IMPORTANT: 
-- Do NOT add any text before the opening bracket [
-- Do NOT add any text after the closing bracket ]
-- Do NOT use markdown code blocks
-- Generate 15 questions following this exact structure
-
-Generate 15 questions now:`;
+Return format:
+{
+  "questions": [
+    {
+      "passage": "Anna loves basketball. She practices every afternoon after school.",
+      "question": "What does Anna do after school?",
+      "options": ["Studies math", "Plays basketball", "Goes shopping", "Cooks dinner"],
+      "correctIndex": 1,
+      "clue": "Check what the passage says Anna does in the afternoon.",
+      "explanation": "The passage says Anna practices basketball after school."
+    }
+  ]
 }
 
-function getOptimizedModel() {
-  return genAI.getGenerativeModel({ 
-    model: "gemini-2.5-flash-lite",
-    generationConfig: {
-      maxOutputTokens: 4000,
-      temperature: 1.0,
-      topP: 0.95,
-    }
-  });
+ALL questions must include the passage field.
+Generate ${questionCount} questions now.`;
 }
 
 async function generateQuiz(
@@ -348,39 +298,50 @@ async function generateQuiz(
   interests: string[],
   gameMode: string,
   difficulty: string,
-  promptBuilder: (level: CEFRLevel, interests: string[], gameMode: string, difficulty: string) => string
+  promptBuilder: (level: CEFRLevel, interests: string[], gameMode: string, difficulty: string, questionCount: number) => string,
+  questionCount: number = 15,
+  includePassage: boolean = false
 ): Promise<Question[]> {
-  const prompt = promptBuilder(level, interests, gameMode, difficulty);
-  const model = getOptimizedModel();
+  const prompt = promptBuilder(level, interests, gameMode, difficulty, questionCount);
+  const model = getOptimizedModel(includePassage);
 
-  return withRetry(async () => {
+  try {
     const result = await model.generateContent(prompt);
     const rawText = result.response.text();
-    const questions = validateAndFormatQuestions(rawText);
     
-    if (questions.length !== 15) {
-      console.warn(`Expected 15 questions, got ${questions.length}. Retrying...`);
-      throw new Error(`Invalid question count: ${questions.length}`);
+    // Parse JSON directly (no sanitization needed with JSON mode)
+    const parsed = JSON.parse(rawText);
+    const questions = validateAndFormatQuestions(parsed);
+
+    if (questions.length !== questionCount) {
+      console.warn(`Expected ${questionCount} questions, got ${questions.length}. Returning ${questions.length} valid questions.`);
     }
-    
+
     return questions;
-  }, 3, 1000);
+  } catch (error) {
+    console.error("Failed to generate quiz:", error);
+    return [];
+  }
 }
 
-export function generateVocabulary(level: CEFRLevel, interests: string[], difficulty: string) {
-  return generateQuiz(level, interests, "Vocabulary", difficulty, vocabularyPrompt);
+export function generateVocabulary(level: CEFRLevel, interests: string[], difficulty: string, questionCount: number = 15) {
+  return generateQuiz(level, interests, "Vocabulary", difficulty, vocabularyPrompt, questionCount, false);
 }
-export function generateGrammar(level: CEFRLevel, interests: string[], difficulty: string) {
-  return generateQuiz(level, interests, "Grammar", difficulty, grammarPrompt);
+
+export function generateGrammar(level: CEFRLevel, interests: string[], difficulty: string, questionCount: number = 15) {
+  return generateQuiz(level, interests, "Grammar", difficulty, grammarPrompt, questionCount, false);
 }
-export function generateTranslation(level: CEFRLevel, interests: string[], difficulty: string) {
-  return generateQuiz(level, interests, "Translation", difficulty, translationPrompt);
+
+export function generateTranslation(level: CEFRLevel, interests: string[], difficulty: string, questionCount: number = 15) {
+  return generateQuiz(level, interests, "Translation", difficulty, translationPrompt, questionCount, false);
 }
-export function generateSentence(level: CEFRLevel, interests: string[], difficulty: string) {
-  return generateQuiz(level, interests, "Sentence Construction", difficulty, sentenceConstructionPrompt);
+
+export function generateSentence(level: CEFRLevel, interests: string[], difficulty: string, questionCount: number = 15) {
+  return generateQuiz(level, interests, "Sentence Construction", difficulty, sentenceConstructionPrompt, questionCount, false);
 }
-export function generateReading(level: CEFRLevel, interests: string[], difficulty: string) {
-  return generateQuiz(level, interests, "Reading Comprehension", difficulty, readingComprehensionPrompt);
+
+export function generateReading(level: CEFRLevel, interests: string[], difficulty: string, questionCount: number = 15) {
+  return generateQuiz(level, interests, "Reading Comprehension", difficulty, readingComprehensionPrompt, questionCount, true);
 }
 
 export async function runWithConcurrencyLimit<T>(
@@ -390,27 +351,26 @@ export async function runWithConcurrencyLimit<T>(
 ): Promise<T[]> {
   const results: T[] = [];
   let completed = 0;
-  
+
   for (let i = 0; i < tasks.length; i += limit) {
     const batch = tasks.slice(i, i + limit);
     const batchResults = await Promise.allSettled(
       batch.map(task => task())
     );
-    
+
     batchResults.forEach((result, index) => {
       completed++;
       if (result.status === 'fulfilled') {
         results[i + index] = result.value;
       } else {
         console.error(`Task ${i + index} failed:`, result.reason);
-        throw result.reason;
+        results[i + index] = null as any;
       }
       onProgress?.(completed, tasks.length);
     });
-
   }
-  
-  return results;
+
+  return results.filter(r => r !== null);
 }
 
 export async function createPersonalizedQuizClient(
@@ -478,7 +438,7 @@ export async function generateAllQuizzes(
     { level: "C2", difficulty: "hard", gameMode: "Reading Comprehension" },
   ];
 
-  const tasks = quizPlan.map(({ level, difficulty, gameMode }) => 
+  const tasks = quizPlan.map(({ level, difficulty, gameMode }) =>
     async () => {
       const result = await createPersonalizedQuizClient(
         userId,
@@ -494,6 +454,64 @@ export async function generateAllQuizzes(
     }
   );
 
-  // Increase concurrency from 5 to 10 for faster generation
   return runWithConcurrencyLimit(tasks, 10, onProgress);
+}
+
+async function generateQuestionsByMode(
+  gameMode: string,
+  level: CEFRLevel,
+  interest: string,
+  difficulty: string,
+  count: number
+): Promise<Question[]> {
+  if (gameMode === "Vocabulary") {
+    return await generateVocabulary(level, [interest], difficulty, count);
+  } else if (gameMode === "Grammar") {
+    return await generateGrammar(level, [interest], difficulty, count);
+  } else if (gameMode === "Translation") {
+    return await generateTranslation(level, [interest], difficulty, count);
+  } else if (gameMode === "Sentence Construction") {
+    return await generateSentence(level, [interest], difficulty, count);
+  } else if (gameMode === "Reading Comprehension") {
+    return await generateReading(level, [interest], difficulty, count);
+  } else {
+    throw new Error(`Unsupported game mode: ${gameMode}`);
+  }
+}
+
+export async function generateQuestionBatch(
+  interest: string,
+  level: CEFRLevel,
+  gameMode: string,
+  difficulty: string,
+  totalQuestions: number = 50,
+  onProgress?: (completed: number, total: number) => void
+): Promise<Question[]> {
+  console.log(`Generating ${totalQuestions} questions for ${interest} ${level} ${gameMode} (single attempt)`);
+
+  try {
+    const questions = await generateQuestionsByMode(
+      gameMode,
+      level,
+      interest,
+      difficulty,
+      totalQuestions
+    );
+
+    console.log(`✅ Received ${questions.length}/${totalQuestions} valid questions from API`);
+    onProgress?.(questions.length, totalQuestions);
+
+    if (questions.length === totalQuestions) {
+      console.log(`✅ Successfully generated all ${totalQuestions} questions`);
+    } else if (questions.length > 0) {
+      console.warn(`⚠️ Generated ${questions.length}/${totalQuestions} questions (partial batch - saving anyway)`);
+    } else {
+      console.error(`❌ No valid questions generated - saving empty result`);
+    }
+
+    return questions;
+  } catch (error) {
+    console.error(`❌ Failed to generate questions for ${interest} ${level} ${gameMode}:`, error);
+    return [];
+  }
 }
