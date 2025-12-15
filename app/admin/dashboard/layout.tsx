@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { BarChart3, Users, LogOut, BookOpen, Menu, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { BarChart3, Users, LogOut, BookOpen, Menu, X, ChevronLeft, ChevronRight, FileText } from "lucide-react";
 import { auth, db } from "@/service/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
@@ -107,10 +107,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       icon: Users,
       href: "/admin/dashboard/users-quiz",
     },
+    {
+      id: "quiz-templates",
+      label: "Quiz Templates",
+      icon: FileText,
+      href: "/admin/dashboard/quiz-templates",
+    },
   ];
 
   // Determine active tab based on pathname
   const getActiveTab = () => {
+    if (pathname?.includes("/quiz-templates")) return "quiz-templates";
     if (pathname?.includes("/users-quiz")) return "users";
     return "dashboard";
   };
