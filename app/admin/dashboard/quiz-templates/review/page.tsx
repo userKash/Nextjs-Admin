@@ -17,6 +17,7 @@ function QuestionReviewContent() {
   const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
   const questionsPerPage = 30;
+  const [editingQuestion, setEditingQuestion] = useState<QuizTemplateQuestion | null>(null);
 
   const { batches, loading: batchesLoading, error: batchesError } = useQuizTemplateBatches(interest, level, gameMode);
   const { questions, loading, error: questionsError } = useQuizTemplateQuestions(
@@ -168,6 +169,43 @@ function QuestionReviewContent() {
       const data = await response.json();
 
       if (!data.success) {
+        alert(`Error: ${data.error}`);
+      }
+    } catch (error: any) {
+      alert(`Error: ${error.message}`);
+    }
+  };
+
+  const handleEditQuestion = (question: QuizTemplateQuestion) => {
+    setEditingQuestion(question);
+  };
+
+  const handleSaveEdit = async (updates: {
+    question: string;
+    passage?: string;
+    options: string[];
+    correctIndex: number;
+    explanation: string;
+    clue: string;
+  }) => {
+    if (!editingQuestion) return;
+
+    try {
+      const response = await fetch('/api/quiz-templates/update-question', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          questionId: editingQuestion.id,
+          updates,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        alert('Question updated successfully!');
+        setEditingQuestion(null);
+      } else {
         alert(`Error: ${data.error}`);
       }
     } catch (error: any) {
@@ -346,6 +384,7 @@ function QuestionReviewContent() {
                 onToggle={() => toggleSelection(question.id)}
                 onApproveSingle={() => handleApproveSingle(question.id)}
                 onRejectSingle={() => handleRejectSingle(question.id)}
+                onEdit={() => handleEditQuestion(question)}
               />
             ))}
           </div>
@@ -373,6 +412,15 @@ function QuestionReviewContent() {
             </button>
           </div>
         )}
+
+        {/* Edit Modal */}
+        {editingQuestion && (
+          <EditQuestionModal
+            question={editingQuestion}
+            onSave={handleSaveEdit}
+            onClose={() => setEditingQuestion(null)}
+          />
+        )}
       </div>
     </div>
   );
@@ -385,6 +433,7 @@ function QuestionCard({
   onToggle,
   onApproveSingle,
   onRejectSingle,
+  onEdit,
 }: {
   question: QuizTemplateQuestion;
   index: number;
@@ -392,6 +441,7 @@ function QuestionCard({
   onToggle: () => void;
   onApproveSingle: () => void;
   onRejectSingle: () => void;
+  onEdit: () => void;
 }) {
   const statusColors = {
     pending: 'bg-yellow-100 border-yellow-300',
@@ -432,22 +482,30 @@ function QuestionCard({
             </div>
 
             {/* Actions */}
-            {question.status === 'pending' && (
-              <div className="flex gap-2">
-                <button
-                  onClick={onApproveSingle}
-                  className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700"
-                >
-                  Approve
-                </button>
-                <button
-                  onClick={onRejectSingle}
-                  className="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700"
-                >
-                  Reject
-                </button>
-              </div>
-            )}
+            <div className="flex gap-2">
+              <button
+                onClick={onEdit}
+                className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+              >
+                Edit
+              </button>
+              {question.status === 'pending' && (
+                <>
+                  <button
+                    onClick={onApproveSingle}
+                    className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    onClick={onRejectSingle}
+                    className="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700"
+                  >
+                    Reject
+                  </button>
+                </>
+              )}
+            </div>
           </div>
 
           {/* Passage (if exists) */}
@@ -507,6 +565,205 @@ function QuestionCard({
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function EditQuestionModal({
+  question,
+  onSave,
+  onClose,
+}: {
+  question: QuizTemplateQuestion;
+  onSave: (updates: {
+    question: string;
+    passage?: string;
+    options: string[];
+    correctIndex: number;
+    explanation: string;
+    clue: string;
+  }) => void;
+  onClose: () => void;
+}) {
+  const [formData, setFormData] = useState({
+    question: question.question,
+    passage: question.passage || '',
+    options: [...question.options],
+    correctIndex: question.correctIndex,
+    explanation: question.explanation,
+    clue: question.clue,
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Validation
+    if (!formData.question.trim()) {
+      alert('Question text is required');
+      return;
+    }
+
+    if (formData.options.some(opt => !opt.trim())) {
+      alert('All options must be filled');
+      return;
+    }
+
+    if (formData.correctIndex < 0 || formData.correctIndex >= formData.options.length) {
+      alert('Please select a valid correct answer');
+      return;
+    }
+
+    if (!formData.explanation.trim() || !formData.clue.trim()) {
+      alert('Explanation and clue are required');
+      return;
+    }
+
+    onSave({
+      question: formData.question,
+      passage: formData.passage || undefined,
+      options: formData.options,
+      correctIndex: formData.correctIndex,
+      explanation: formData.explanation,
+      clue: formData.clue,
+    });
+  };
+
+  const handleOptionChange = (index: number, value: string) => {
+    const newOptions = [...formData.options];
+    newOptions[index] = value;
+    setFormData({ ...formData, options: newOptions });
+  };
+
+  return (
+    <div className="fixed inset-0 backdrop-blur-sm bg-white/30 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+        <form onSubmit={handleSubmit}>
+          {/* Header */}
+          <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+            <h2 className="text-2xl font-bold text-gray-900">Edit Question</h2>
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 text-2xl"
+            >
+              ×
+            </button>
+          </div>
+
+          {/* Body */}
+          <div className="px-6 py-4 space-y-4">
+            {/* Passage (Optional) */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Passage (Optional - for Reading Comprehension)
+              </label>
+              <textarea
+                value={formData.passage}
+                onChange={(e) => setFormData({ ...formData, passage: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                rows={3}
+                placeholder="Enter passage text..."
+              />
+            </div>
+
+            {/* Question */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Question <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={formData.question}
+                onChange={(e) => setFormData({ ...formData, question: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                rows={2}
+                required
+                placeholder="Enter question text..."
+              />
+            </div>
+
+            {/* Options */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Answer Options <span className="text-red-500">*</span>
+              </label>
+              <div className="space-y-2">
+                {formData.options.map((option, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="correctAnswer"
+                      checked={formData.correctIndex === index}
+                      onChange={() => setFormData({ ...formData, correctIndex: index })}
+                      className="h-4 w-4"
+                    />
+                    <span className="font-semibold text-gray-700 w-8">
+                      {String.fromCharCode(65 + index)}.
+                    </span>
+                    <input
+                      type="text"
+                      value={option}
+                      onChange={(e) => handleOptionChange(index, e.target.value)}
+                      className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                      required
+                      placeholder={`Option ${String.fromCharCode(65 + index)}`}
+                    />
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Select the radio button to mark the correct answer
+              </p>
+            </div>
+
+            {/* Explanation */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Explanation <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={formData.explanation}
+                onChange={(e) => setFormData({ ...formData, explanation: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                rows={2}
+                required
+                placeholder="Explain why this is the correct answer..."
+              />
+            </div>
+
+            {/* Clue */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Clue <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={formData.clue}
+                onChange={(e) => setFormData({ ...formData, clue: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                rows={2}
+                required
+                placeholder="Provide a helpful hint..."
+              />
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-4 flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            >
+              Save Changes
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
