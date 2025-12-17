@@ -32,10 +32,17 @@ export async function POST(request: NextRequest) {
     const questionRefs = questionIds.map((id: string) => adminDb.collection('quiz_template_questions').doc(id));
     const questionDocs = await adminDb.getAll(...questionRefs);
 
-    const questionsData = questionDocs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
+    const questionsData = questionDocs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        status: data?.status,
+        interest: data?.interest,
+        level: data?.level,
+        gameMode: data?.gameMode,
+        batchId: data?.batchId,
+      };
+    });
 
     // Filter only approved questions
     const approvedQuestions = questionsData.filter((q: any) => q.status === 'approved');

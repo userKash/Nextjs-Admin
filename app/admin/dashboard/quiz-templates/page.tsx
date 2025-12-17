@@ -6,7 +6,7 @@ import { CEFRLevel } from '@/lib/geminiService';
 import { useQuizTemplateStats } from '@/app/hooks/useQuizTemplates';
 import { INTERESTS, GAME_MODES, CEFR_LEVELS } from '@/lib/constants';
 
-const LEVELS: CEFRLevel[] = CEFR_LEVELS;
+const LEVELS = CEFR_LEVELS;
 const STORAGE_KEY_INTEREST = 'quiz-templates-selected-interest';
 const STORAGE_KEY_LEVEL = 'quiz-templates-selected-level';
 

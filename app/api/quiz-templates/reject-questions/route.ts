@@ -34,10 +34,13 @@ export async function POST(request: NextRequest) {
     const questionRefs = questionIds.map(id => adminDb.collection('quiz_template_questions').doc(id));
     const questionDocs = await adminDb.getAll(...questionRefs);
 
-    const questionsData = questionDocs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
+    const questionsData = questionDocs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        batchId: data?.batchId,
+      };
+    });
 
     // Group by batch for counting
     const batchUpdates = new Map<string, number>();

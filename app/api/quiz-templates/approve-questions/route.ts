@@ -34,10 +34,17 @@ export async function POST(request: NextRequest) {
     const questionRefs = questionIds.map(id => adminDb.collection('quiz_template_questions').doc(id));
     const questionDocs = await adminDb.getAll(...questionRefs);
 
-    const questionsData = questionDocs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
+    const questionsData = questionDocs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        interest: data?.interest,
+        level: data?.level,
+        gameMode: data?.gameMode,
+        difficulty: data?.difficulty,
+        batchId: data?.batchId,
+      };
+    });
 
     // Group by pool (interest_level_gameMode)
     const poolUpdates = new Map<string, any>();
